@@ -332,6 +332,23 @@ function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,
  useEffect(()=>{supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))},[job.id])
  const save=async()=>{const {site_name,created_at,...payload}=form as any;await supabase!.from('jobs').update({...payload,site_id:payload.site_id||null}).eq('id',job.id);await onRefresh()}
  const assign=async()=>{if(!fitter)return;await supabase!.from('job_assignments').upsert({job_id:job.id,fitter_id:fitter});setFitter('');const {data}=await supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id);setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name})))}
+
+const unassign=async(fitterId:string)=>{
+  await supabase!.from('job_assignments')
+    .delete()
+    .eq('job_id',job.id)
+    .eq('fitter_id',fitterId)
+
+  const {data}=await supabase!
+    .from('job_assignments')
+    .select('job_id,fitter_id,profiles(full_name)')
+    .eq('job_id',job.id)
+
+  setAssignments((data||[]).map((x:any)=>({
+    ...x,
+    fitter_name:x.profiles?.full_name
+  })))
+}
  return <section className="panel">
    <div className="form-grid">
     <label>Job number<input disabled={!admin} value={form.job_number} onChange={e=>setForm({...form,job_number:e.target.value})}/></label>
@@ -347,7 +364,25 @@ function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,
     <label className="span2">Installation instructions<textarea value={form.instructions||''} onChange={e=>setForm({...form,instructions:e.target.value})}/></label>
    </div>
    <div className="row gap wrap"><button className="button" onClick={save}>Save changes</button></div>
-   {admin&&<div className="subsection"><h3>Assigned fitters</h3><div className="chips">{assignments.map(a=><span className="chip" key={a.fitter_id}>{a.fitter_name||a.fitter_id}</span>)}</div><div className="row gap"><select value={fitter} onChange={e=>setFitter(e.target.value)}><option value="">Choose fitter…</option>{profiles.filter(p=>p.role==='fitter'&&p.active).map(p=><option value={p.id} key={p.id}>{p.full_name}</option>)}</select><button className="button secondary" onClick={assign}>Assign</button></div></div>}
+   {admin&&<div className="subsection"><h3>Assigned fitters</h3><div className="chips">{assignments.map(a=><span className="chip" key={a.fitter_id}><>
+  {a.fitter_name||a.fitter_id}
+  <button
+    type="button"
+    onClick={()=>unassign(a.fitter_id)}
+    style={{
+      marginLeft:'10px',
+      padding:'4px 10px',
+      border:'1px solid #dc2626',
+      borderRadius:'6px',
+      background:'#dc2626',
+      color:'white',
+      cursor:'pointer',
+      fontWeight:700
+    }}
+  >
+    Remove
+  </button>
+</></span>)}</div><div className="row gap"><select value={fitter} onChange={e=>setFitter(e.target.value)}><option value="">Choose fitter…</option>{profiles.filter(p=>p.role==='fitter'&&p.active).map(p=><option value={p.id} key={p.id}>{p.full_name}</option>)}</select><button className="button secondary" onClick={assign}>Assign</button></div></div>}
  </section>
 }
 
