@@ -344,7 +344,7 @@ function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job
    <div className="tabs">{tabs.filter(x=>admin||x.id!=='payments').map(x=><button key={x.id} className={tab===x.id?'active':''} onClick={()=>setTab(x.id)}><x.icon size={16}/>{x.label}</button>)}</div>
    {tab==='details'&&<DetailsTab job={job} admin={admin} profiles={profiles} sites={sites} onRefresh={onRefresh}/>}
    {tab==='notes'&&<NotesTab job={job} admin={admin}/>}
-   {tab==='photos'&&<PhotosTab job={job}/>}
+   {tab==='photos'&&<PhotosTab job={job} admin={admin}/>}
    {tab==='variations'&&<VariationsTab job={job} admin={admin} onRefresh={onRefresh}/>}
    {tab==='payments'&&admin&&<JobPayments job={job} onRefresh={onRefresh}/>}
    {tab==='checklist'&&<ChecklistTab job={job}/>}
@@ -362,7 +362,17 @@ function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,
  const [assignments,setAssignments]=useState<Assignment[]>([])
  const [fitter,setFitter]=useState('')
  useEffect(()=>{supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))},[job.id])
- const save=async()=>{const {site_name,created_at,...payload}=form as any;await supabase!.from('jobs').update({...payload,site_id:payload.site_id||null}).eq('id',job.id);await onRefresh()}
+ const save=async()=>{const {site_name,created_at,sites,...payload}=form as any;const {error}=await supabase!
+  .from('jobs')
+  .update({...payload,site_id:payload.site_id||null})
+  .eq('id',job.id)
+
+if(error){
+  alert(error.message)
+  return
+}
+
+await onRefresh()}
  const assign=async()=>{if(!fitter)return;await supabase!.from('job_assignments').upsert({job_id:job.id,fitter_id:fitter});setFitter('');const {data}=await supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id);setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name})))}
 
 const unassign=async(fitterId:string)=>{
@@ -416,12 +426,12 @@ const unassign=async(fitterId:string)=>{
     <label className="span2">Installation instructions<textarea value={form.instructions||''} onChange={e=>setForm({...form,instructions:e.target.value})}/></label>
    </div>
    <div className="row gap wrap"><button className="button" onClick={save}>Save changes</button>
-<button
+{admin&&<button
   className="button secondary danger-outline"
   onClick={deleteJob}
 >
   Delete job
-</button></div>
+</button>}</div>
    {admin&&<div className="subsection"><h3>Assigned fitters</h3><div className="chips">{assignments.map(a=><span className="chip" key={a.fitter_id}><>
   {a.fitter_name||a.fitter_id}
   <button
@@ -448,12 +458,36 @@ function NotesTab({job,admin}:{job:Job,admin:boolean}){
  const [notes,setNotes]=useState<Note[]>([]),[body,setBody]=useState(''),[visibility,setVisibility]=useState<'team'|'internal'>('team')
  const load=()=>supabase!.from('job_notes').select('*').eq('job_id',job.id).order('created_at',{ascending:false}).then(({data})=>setNotes(data||[]))
  useEffect(()=>{load()},[job.id])
- const add=async()=>{if(!body.trim())return;await supabase!.from('job_notes').insert({job_id:job.id,body,visibility:admin?visibility:'team'});setBody('');load()}
+ const deleteNote=async(id:string)=>{
+  if(!admin)return
+  const confirmed=window.confirm('Permanently delete this note? This cannot be undone.')
+  if(!confirmed)return
+
+  const {error}=await supabase!
+    .from('job_notes')
+    .delete()
+    .eq('id',id)
+
+  if(error){
+    alert(error.message)
+    return
+  }
+
+  load()
+}
+const add=async()=>{if(!body.trim())return;await supabase!.from('job_notes').insert({job_id:job.id,body,visibility:admin?visibility:'team'});setBody('');load()}
  return <section className="panel"><div className="form-grid"><label className="span2">Add job note<textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Site update, issue, instruction, access note…"/></label>{admin&&<label>Visibility<select value={visibility} onChange={e=>setVisibility(e.target.value as any)}><option value="team">Team</option><option value="internal">Internal only</option></select></label>}</div><button className="button" onClick={add}>Add note</button>
- <div className="timeline">{notes.map(n=><article key={n.id}><span>{new Date(n.created_at).toLocaleString('en-GB')}</span><p>{n.body}</p><small>{n.visibility==='internal'?'Internal only':'Visible to assigned team'}</small></article>)}{!notes.length&&<p className="empty">No notes yet.</p>}</div></section>
+ <div className="timeline">{notes.map(n=><article key={n.id}><span>{new Date(n.created_at).toLocaleString('en-GB')}</span><p>{n.body}</p><small>{n.visibility==='internal'?'Internal only':'Visible to assigned team'}</small>
+{admin&&<button
+  type="button"
+  className="button secondary danger-outline"
+  onClick={()=>deleteNote(n.id)}
+>
+  Delete note
+</button>}</article>)}{!notes.length&&<p className="empty">No notes yet.</p>}</div></section>
 }
 
-function PhotosTab({job}:{job:Job}){
+function PhotosTab({job,admin}:{job:Job,admin:boolean}){
  const [files,setFiles]=useState<JobFile[]>([]),[category,setCategory]=useState('Before Installation'),[note,setNote]=useState(''),[busy,setBusy]=useState(false)
  const load=()=>supabase!.from('job_files').select('*').eq('job_id',job.id).order('created_at',{ascending:false}).then(({data})=>setFiles(data||[]))
  useEffect(()=>{load()},[job.id])
@@ -469,8 +503,44 @@ function PhotosTab({job}:{job:Job}){
    }catch(err:any){alert(err.message)}finally{setBusy(false);e.target.value=''}
  }
  const open=async(f:JobFile)=>{const {data,error}=await supabase!.storage.from('job-files').createSignedUrl(f.storage_path,60);if(error)alert(error.message);else window.open(data.signedUrl,'_blank')}
- return <section className="panel"><div className="upload-row"><label>Category<select value={category} onChange={e=>setCategory(e.target.value)}><option>Before Installation</option><option>Preparation</option><option>Installation</option><option>Completed Work</option><option>Snags / Problems</option><option>Document</option></select></label><label>Note<input value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional description"/></label><label className="file-button button">{busy?'Uploading…':'Upload photo / file'}<input type="file" accept="image/*,.pdf" onChange={upload} disabled={busy}/></label></div>
- <div className="file-grid">{files.map(f=><button key={f.id} className="file-card" onClick={()=>open(f)}><Camera/><div><strong>{f.category}</strong><span>{f.file_name}</span><small>{f.note||new Date(f.created_at).toLocaleString('en-GB')}</small></div></button>)}{!files.length&&<p className="empty">No photos or files uploaded yet.</p>}</div></section>
+const deletePhoto=async(f:JobFile)=>{
+  if(!admin)return
+
+  const confirmed=window.confirm('Permanently delete this photo? This cannot be undone.')
+  if(!confirmed)return
+
+  const {error:storageError}=await supabase!.storage
+    .from('job-files')
+    .remove([f.storage_path])
+
+  if(storageError){
+    alert(storageError.message)
+    return
+  }
+
+  const {error}=await supabase!
+    .from('job_files')
+    .delete()
+    .eq('id',f.id)
+
+  if(error){
+    alert(error.message)
+    return
+  }
+
+  await load()
+} 
+return <section className="panel"><div className="upload-row"><label>Category<select value={category} onChange={e=>setCategory(e.target.value)}><option>Before Installation</option><option>Preparation</option><option>Installation</option><option>Completed Work</option><option>Snags / Problems</option><option>Document</option></select></label><label>Note<input value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional description"/></label><label className="file-button button">{busy?'Uploading…':'Upload photo / file'}<input type="file" accept="image/*,.pdf" onChange={upload} disabled={busy}/></label></div>
+ <div className="file-grid">{files.map(f=><div key={f.id} className="file-card" onClick={()=>open(f)}><Camera/><div><strong>{f.category}</strong><span>{f.file_name}</span><small>{f.note||new Date(f.created_at).toLocaleString('en-GB')}</small>{admin&&<button
+  type="button"
+  className="button secondary danger-outline"
+  onClick={(e)=>{
+    e.stopPropagation()
+    deletePhoto(f)
+  }}
+>
+  Delete photo
+</button>}</div></div>)}{!files.length&&<p className="empty">No photos or files uploaded yet.</p>}</div></section>
 }
 
 function VariationsTab({job,admin,onRefresh}:{job:Job,admin:boolean,onRefresh:()=>Promise<void>}){
