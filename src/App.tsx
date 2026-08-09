@@ -353,12 +353,23 @@ function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job
 }
 
 function FitterJobActions({job,onRefresh}:{job:Job,onRefresh:()=>Promise<void>}){
- const update=async(status:'In Progress'|'Snag'|'Complete')=>{const {error}=await supabase!.from('jobs').update({status}).eq('id',job.id);if(error)alert(error.message);else await onRefresh()}
- return <section className="fitter-action-strip"><button className="button secondary" onClick={()=>update('In Progress')}><Play size={17}/>Start job</button><button className="button secondary danger-outline" onClick={()=>update('Snag')}><AlertTriangle size={17}/>Report snag</button><button className="button" onClick={()=>update('Complete')}><CheckCircle2 size={17}/>Mark complete</button></section>
+ const update=async(status:'In Progress'|'Snag'|'Ready for Handover')=>{const {error}=await supabase!.from('jobs').update({status}).eq('id',job.id);if(error)alert(error.message);else await onRefresh()}
+ return <section className="fitter-action-strip"><button className="button secondary" onClick={()=>update('In Progress')}><Play size={17}/>Start job</button><button className="button secondary danger-outline" onClick={()=>update('Snag')}><AlertTriangle size={17}/>Report snag</button><button className="button" onClick={()=>update('Ready for Handover')}><CheckCircle2 size={17}/>Ready for Handover</button></section>
 }
 
 function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],onRefresh:()=>Promise<void>}){
- const [form,setForm]=useState({...job,site_id:job.site_id||''})
+ const statusStages=[
+  'Booked',
+  'Prep',
+  'In Progress',
+  'Ready for Handover',
+  'Complete',
+  'Invoiced',
+  'Paid'
+];
+
+const [statusOpen,setStatusOpen]=useState(false)
+const [form,setForm]=useState({...job,site_id:job.site_id||''})
  const [assignments,setAssignments]=useState<Assignment[]>([])
  const [fitter,setFitter]=useState('')
  useEffect(()=>{supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))},[job.id])
@@ -414,7 +425,32 @@ const unassign=async(fitterId:string)=>{
  return <section className="panel">
    <div className="form-grid">
     <label>Job number<input disabled={!admin} value={form.job_number} onChange={e=>setForm({...form,job_number:e.target.value})}/></label>
-    <label>Status<select value={form.status} onChange={e=>setForm({...form,status:e.target.value as any})}><option>Booked</option><option>Prep</option><option>In Progress</option><option>Snag</option><option>Complete</option><option>Invoiced</option><option>Paid</option></select></label>
+    {admin&&<div className="span2" style={{display:'block'}}>
+  <button
+  type="button"
+  className="button secondary"
+  onClick={()=>setStatusOpen(!statusOpen)}
+>
+  Status: {form.status} {statusOpen?'▲':'▼'}
+</button>
+  {statusOpen&&<div className="status-progress" style={{display:'flex',flexDirection:'column',gap:'8px',marginTop:'10px'}}>
+    {statusStages.map((stage,index)=>{
+      const currentIndex=statusStages.indexOf(form.status)
+      const checked=currentIndex>=0&&index<=currentIndex
+
+      return <div key={stage} style={{display:'flex',alignItems:'center',gap:'8px',justifyContent:'flex-start',width:'300px',whiteSpace:'nowrap'}}>
+        
+          <input
+  type="checkbox"
+  checked={checked}
+  onChange={()=>setForm({...form,status:stage as any})}
+  style={{width:'18px',height:'18px',margin:0,flex:'0 0 18px'}}
+/>
+        {stage}
+      </div>
+    })}
+  </div>}
+</div>}
     <label>Install date<input disabled={!admin} type="date" value={form.install_date||''} onChange={e=>setForm({...form,install_date:e.target.value})}/></label>
     <label>Customer<input disabled={!admin} value={form.customer} onChange={e=>setForm({...form,customer:e.target.value})}/></label>
     <label>Site<select disabled={!admin} value={form.site_id||''} onChange={e=>setForm({...form,site_id:e.target.value})}><option value="">Private / no site</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
