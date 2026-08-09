@@ -348,6 +348,26 @@ const unassign=async(fitterId:string)=>{
     ...x,
     fitter_name:x.profiles?.full_name
   })))
+
+
+};const deleteJob=async()=>{
+  const confirmed=window.confirm(
+    `Permanently delete job ${job.job_number}? This cannot be undone.`
+  )
+  if(!confirmed)return
+
+  const {error}=await supabase!
+    .from('jobs')
+    .delete()
+    .eq('id',job.id)
+
+  if(error){
+    alert(error.message)
+    return
+  }
+
+  await onRefresh()
+  window.location.reload()
 }
  return <section className="panel">
    <div className="form-grid">
@@ -363,7 +383,13 @@ const unassign=async(fitterId:string)=>{
     <label className="span2">Access notes<textarea value={form.access_notes||''} onChange={e=>setForm({...form,access_notes:e.target.value})}/></label>
     <label className="span2">Installation instructions<textarea value={form.instructions||''} onChange={e=>setForm({...form,instructions:e.target.value})}/></label>
    </div>
-   <div className="row gap wrap"><button className="button" onClick={save}>Save changes</button></div>
+   <div className="row gap wrap"><button className="button" onClick={save}>Save changes</button>
+<button
+  className="button secondary danger-outline"
+  onClick={deleteJob}
+>
+  Delete job
+</button></div>
    {admin&&<div className="subsection"><h3>Assigned fitters</h3><div className="chips">{assignments.map(a=><span className="chip" key={a.fitter_id}><>
   {a.fitter_name||a.fitter_id}
   <button
