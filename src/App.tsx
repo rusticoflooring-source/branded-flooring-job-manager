@@ -282,9 +282,35 @@ function NewJobModal({sites,onClose,onDone}:{sites:Site[],onClose:()=>void,onDon
 function SitesPage({sites,jobs,onRefresh}:{sites:Site[],jobs:Job[],onRefresh:()=>Promise<void>}){
  const [name,setName]=useState(''),[developer,setDeveloper]=useState(''),[address,setAddress]=useState('')
  const add=async(e:FormEvent)=>{e.preventDefault();if(!name.trim())return;await supabase!.from('sites').insert({name,developer:developer||null,address:address||null});setName('');setDeveloper('');setAddress('');await onRefresh()}
+
+const deleteSite=async(site:Site)=>{
+  const confirmed=window.confirm(
+    `Permanently delete site ${site.name}? This cannot be undone.`
+  )
+  if(!confirmed)return
+
+  const {error}=await supabase!
+    .from('sites')
+    .delete()
+    .eq('id',site.id)
+
+  if(error){
+    alert(error.message)
+    return
+  }
+
+  await onRefresh()
+}
  return <><div className="page-title"><div><h1>Sites & developments</h1><p>Create the development once, then attach multiple plots/jobs to it.</p></div></div>
  <section className="panel"><form className="inline-form" onSubmit={add}><input placeholder="Development / site name" value={name} onChange={e=>setName(e.target.value)} required/><input placeholder="Developer" value={developer} onChange={e=>setDeveloper(e.target.value)}/><input placeholder="Address" value={address} onChange={e=>setAddress(e.target.value)}/><button className="button"><Plus size={17}/>Add site</button></form></section>
- <div className="cards">{sites.map(s=><section className="panel" key={s.id}><div className="site-card"><Building2/><div><h3>{s.name}</h3><p>{s.developer||'No developer set'}</p><small>{s.address||'No address set'}</small></div><strong>{jobs.filter(j=>j.site_id===s.id).length} jobs</strong></div></section>)}</div></>
+ <div className="cards">{sites.map(s=><section className="panel" key={s.id}><div className="site-card"><Building2/><div><h3>{s.name}</h3><button
+  type="button"
+  className="button secondary danger-outline"
+  onClick={()=>deleteSite(s)}
+>
+  Delete site
+</button>
+<p>{s.developer||'No developer set'}</p><small>{s.address||'No address set'}</small></div><strong>{jobs.filter(j=>j.site_id===s.id).length} jobs</strong></div></section>)}</div></>
 }
 
 function FittersPage({profiles}:{profiles:Profile[]}){
