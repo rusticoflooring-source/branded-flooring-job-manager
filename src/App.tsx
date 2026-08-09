@@ -284,6 +284,12 @@ function SitesPage({sites,jobs,onRefresh}:{sites:Site[],jobs:Job[],onRefresh:()=
  const add=async(e:FormEvent)=>{e.preventDefault();if(!name.trim())return;await supabase!.from('sites').insert({name,developer:developer||null,address:address||null});setName('');setDeveloper('');setAddress('');await onRefresh()}
 
 const deleteSite=async(site:Site)=>{
+const siteJobs=jobs.filter(j=>j.site_id===site.id)
+
+if(siteJobs.length>0){
+  alert(`You cannot delete ${site.name} because it has ${siteJobs.length} job(s) attached. Delete or move those jobs first.`)
+  return
+}
   const confirmed=window.confirm(
     `Permanently delete site ${site.name}? This cannot be undone.`
   )
