@@ -185,7 +185,13 @@ function Login(){
     setBusy(false)
   }
   return <div className="center-screen login-bg"><form className="card login" onSubmit={submit}>
-    <div className="brand large"><div className="brand-mark">BF</div><div><strong>BRANDED FLOORING</strong><small>Job Management</small></div></div>
+    <div className="brand large">
+  <img
+    src="/company-logo.png"
+    alt="Branded Flooring & Interiors"
+    style={{ width: '100%', maxWidth: '420px', height: 'auto', display: 'block' }}
+  />
+</div>
     <h1>Sign in</h1><p className="muted">Admin and fitter accounts use the same secure login.</p>
     <label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/></label>
     <label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required/></label>
