@@ -1,6 +1,5 @@
 export type Role = 'admin' | 'fitter'
-export type JobStatus = 'Booked' | 'Prep' | 'In Progress' | 'Snag' | 'Complete' | 'Invoiced' | 'Paid'
-
+export type JobStatus = 'Booked' | 'Prep' | 'In Progress' | 'Snag' | 'Install Complete' | 'Invoiced' | 'Fitter Paid' | 'Payment Received'
 export interface Profile {
   id: string
   full_name: string
@@ -17,6 +16,7 @@ export interface Site {
 
 export interface Job {
   id: string
+archived: boolean
   job_number: string
   customer: string
   site_id: string | null
