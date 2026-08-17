@@ -207,11 +207,16 @@ function Dashboard({jobs,admin,openJob}:{jobs:Job[],admin:boolean,openJob:(j:Job
   const outstanding=jobs.reduce((a,j)=>a+Math.max(0,Number(j.invoiced_value)-Number(j.paid_value)),0)
   const fitterDue=jobs.filter(j=>j.fitter_payment_status!=='Paid').reduce((a,j)=>a+Number(j.fitter_payment_due||0),0)
   const today=new Date().toISOString().slice(0,10)
-  const todayJobs=jobs.filter(j=>j.install_date===today)
-  return <>
+
+const nextWeek=new Date()
+nextWeek.setDate(nextWeek.getDate()+7)
+const nextWeekDate=nextWeek.toISOString().slice(0,10)
+
+const todayJobs=jobs.filter(j=>j.install_date&&j.install_date>=today&&j.install_date<=nextWeekDate)
+return <>
     <div className="page-title"><div><h1>Operations Dashboard</h1><p>Live installation, payment and snag overview.</p></div></div>
     <div className="metrics"><Metric label="Active jobs" value={String(active)}/><Metric label="Complete / ready" value={String(complete)}/><Metric label="Outstanding invoices" value={money(outstanding)}/><Metric label="Fitter payments due" value={money(fitterDue)}/></div>
-    <section className="panel"><div className="panel-head"><div><h2>{todayJobs.length?'Today’s jobs':'Upcoming jobs'}</h2><p>{todayJobs.length?`${todayJobs.length} scheduled today`:'Next jobs in the programme'}</p></div></div><JobTable jobs={(todayJobs.length?todayJobs:jobs).slice(0,10)} openJob={openJob}/></section>
+    <section className="panel"><div className="panel-head"><div><h2>Upcoming jobs – next 7 days</h2><p>{todayJobs.length?`${todayJobs.length} scheduled in the next 7 days`:'Next jobs in the programme'}</p></div></div><JobTable jobs={(todayJobs.length?todayJobs:jobs).slice(0,10)} openJob={openJob}/></section>
   </>
 }
 
