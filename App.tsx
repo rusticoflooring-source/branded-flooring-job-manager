@@ -7,7 +7,7 @@ import { configured, supabase } from './lib/supabase'
 import type { Assignment, Job, JobFile, Note, Profile, Site, Variation } from './types'
 import SignaturePad from './components/SignaturePad'
 
-type Page='dashboard'|'jobs'|'sites'|'fitters'|'payments'|'job'
+type Page='dashboard'|'jobs'|'completed'|'sites'|'fitters'|'payments'|'job'
 type Tab='details'|'notes'|'photos'|'variations'|'payments'|'checklist'|'signoff'
 
 const checklistSets:Record<string,string[]>={
@@ -131,9 +131,9 @@ export default function App(){
   if(!profile)return <div className="center-screen card narrow"><h2>Account not configured</h2><p>Your login exists, but there is no matching profile/role. Run the setup SQL and add this user to the profiles table.</p><button className="button" onClick={()=>supabase!.auth.signOut()}>Sign out</button></div>
 
   const admin=profile.role==='admin'
-  const filtered=jobs.filter(j=>[j.job_number,j.customer,j.site_name,j.plot,j.po_number,j.flooring_type].join(' ').toLowerCase().includes(search.toLowerCase()))
-
-  const openJob=(j:Job)=>{setSelected(j);setTab('details');setPage('job')}
+  const filtered=jobs.filter(j=>!j.archived&&[j.job_number,j.customer,j.site_name,j.plot,j.po_number,j.flooring_type].join(' ').toLowerCase().includes(search.toLowerCase()))
+const completed=jobs.filter(j=>j.archived)
+const openJob=(j:Job)=>{setSelected(j);setTab('details');setPage('job')}
   const nav=(p:Page)=>{setPage(p);setMobileNav(false)}
 
   return <div className="shell">
@@ -141,7 +141,9 @@ export default function App(){
       <div className="brand"><div className="brand-mark">BF</div><div><strong>BRANDED FLOORING</strong><small>Job Manager</small></div></div>
       <nav>
         <NavButton icon={<BriefcaseBusiness/>} label={admin?'Dashboard':'My Jobs'} active={page==='dashboard'} onClick={()=>nav('dashboard')}/>
-        <NavButton icon={<ClipboardCheck/>} label="Jobs" active={page==='jobs'} onClick={()=>nav('jobs')}/>
+        <NavButton icon={<ClipboardCheck/>} label="Jobs" active={page==='jobs'}
+ onClick={()=>nav('jobs')}/>
+{admin&&<NavButton icon={<ClipboardCheck/>} label="Completed" active={page==='completed'} onClick={()=>nav('completed')}/>}
         {admin&&<><NavButton icon={<Building2/>} label="Sites & Plots" active={page==='sites'} onClick={()=>nav('sites')}/>
         <NavButton icon={<Users/>} label="Fitters" active={page==='fitters'} onClick={()=>nav('fitters')}/>
         <NavButton icon={<Wallet/>} label="Payments" active={page==='payments'} onClick={()=>nav('payments')}/></>}
@@ -154,11 +156,12 @@ export default function App(){
       <div className="content">
         {page==='dashboard'&&<Dashboard jobs={jobs} admin={admin} openJob={openJob}/>}
         {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()}/>}
+{page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
         {page==='sites'&&admin&&<SitesPage sites={sites} jobs={jobs} onRefresh={async()=>refresh()}/>}
         {page==='fitters'&&admin&&<FittersPage profiles={profiles}/>}
         {page==='payments'&&admin&&<PaymentsPage jobs={jobs} openJob={openJob}/>}
         {page==='job'&&selected&&<JobPage job={selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
-          onBack={()=>nav('jobs')} onRefresh={async()=>{await refresh(); const {data}=await supabase!.from('jobs').select('*, sites(name)').eq('id',selected.id).single(); if(data)setSelected({...data,site_name:(data as any).sites?.name||''})}}/>}
+          onBack={()=>nav(selected.archived?'completed':'jobs')} onRefresh={async()=>{await refresh(); const {data}=await supabase!.from('jobs').select('*, sites(name)').eq('id',selected.id).single(); if(data)setSelected({...data,site_name:(data as any).sites?.name||''})}}/>}
       </div>
     </main>
   </div>
@@ -202,33 +205,31 @@ function Login(){
 
 function Dashboard({jobs,admin,openJob}:{jobs:Job[],admin:boolean,openJob:(j:Job)=>void}){
   if(!admin)return <FitterDashboard jobs={jobs} openJob={openJob}/>
-  const active=jobs.filter(j=>!['Complete','Paid'].includes(j.status)).length
-  const complete=jobs.filter(j=>j.status==='Complete').length
+  const activeJobs=jobs.filter(j=>!j.archived)
+  const active=activeJobs.length
+  const complete=activeJobs.filter(j=>j.status==='Install Complete').length
   const outstanding=jobs.reduce((a,j)=>a+Math.max(0,Number(j.invoiced_value)-Number(j.paid_value)),0)
   const fitterDue=jobs.filter(j=>j.fitter_payment_status!=='Paid').reduce((a,j)=>a+Number(j.fitter_payment_due||0),0)
   const today=new Date().toISOString().slice(0,10)
-
-const nextWeek=new Date()
-nextWeek.setDate(nextWeek.getDate()+7)
-const nextWeekDate=nextWeek.toISOString().slice(0,10)
-
-const todayJobs=jobs.filter(j=>j.install_date&&j.install_date>=today&&j.install_date<=nextWeekDate)
-return <>
+  const todayJobs=activeJobs.filter(j=>j.install_date===today)
+  const nextJobs=activeJobs.filter(j=>!j.install_date||j.install_date>=today).slice(0,10)
+  return <>
     <div className="page-title"><div><h1>Operations Dashboard</h1><p>Live installation, payment and snag overview.</p></div></div>
-    <div className="metrics"><Metric label="Active jobs" value={String(active)}/><Metric label="Complete / ready" value={String(complete)}/><Metric label="Outstanding invoices" value={money(outstanding)}/><Metric label="Fitter payments due" value={money(fitterDue)}/></div>
-    <section className="panel"><div className="panel-head"><div><h2>Upcoming jobs – next 7 days</h2><p>{todayJobs.length?`${todayJobs.length} scheduled in the next 7 days`:'Next jobs in the programme'}</p></div></div><JobTable jobs={(todayJobs.length?todayJobs:jobs).slice(0,10)} openJob={openJob}/></section>
+    <div className="metrics"><Metric label="Active jobs" value={String(active)}/><Metric label="Install complete" value={String(complete)}/><Metric label="Outstanding invoices" value={money(outstanding)}/><Metric label="Fitter payments due" value={money(fitterDue)}/></div>
+    <section className="panel"><div className="panel-head"><div><h2>{todayJobs.length?'Today’s jobs':'Upcoming jobs — next 7 days'}</h2><p>{todayJobs.length?`${todayJobs.length} scheduled today`:'Next jobs in the programme'}</p></div></div><JobTable jobs={todayJobs.length?todayJobs:nextJobs} openJob={openJob}/></section>
   </>
 }
 
 function FitterDashboard({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
+  const activeJobs=jobs.filter(j=>!j.archived)
   const today=new Date().toISOString().slice(0,10)
-  const todayJobs=jobs.filter(j=>j.install_date===today)
-  const upcoming=jobs.filter(j=>!j.install_date || j.install_date>=today).filter(j=>!['Complete','Paid'].includes(j.status))
-  const completed=jobs.filter(j=>['Complete','Paid'].includes(j.status)).length
+  const todayJobs=activeJobs.filter(j=>j.install_date===today)
+  const upcoming=activeJobs.filter(j=>!j.install_date || j.install_date>=today)
+  const installComplete=activeJobs.filter(j=>j.status==='Install Complete').length
   const focus=todayJobs.length?todayJobs:upcoming.slice(0,8)
   return <>
     <div className="page-title fitter-title"><div><h1>{todayJobs.length?'Today’s work':'My jobs'}</h1><p>{todayJobs.length?'Everything assigned to you for today.':'Your assigned upcoming installations.'}</p></div></div>
-    <div className="fitter-summary"><div><CalendarDays/><strong>{todayJobs.length}</strong><span>Today</span></div><div><BriefcaseBusiness/><strong>{upcoming.length}</strong><span>Upcoming</span></div><div><CheckCircle2/><strong>{completed}</strong><span>Completed</span></div></div>
+    <div className="fitter-summary"><div><CalendarDays/><strong>{todayJobs.length}</strong><span>Today</span></div><div><BriefcaseBusiness/><strong>{upcoming.length}</strong><span>Upcoming</span></div><div><CheckCircle2/><strong>{installComplete}</strong><span>Install complete</span></div></div>
     <div className="fitter-job-list">{focus.map(j=><FitterJobCard key={j.id} job={j} openJob={openJob}/>)}{!focus.length&&<section className="panel fitter-empty"><CheckCircle2/><h2>No jobs waiting</h2><p>You have no assigned upcoming jobs.</p></section>}</div>
   </>
 }
@@ -251,6 +252,49 @@ function JobsPage({jobs,sites,admin,search,setSearch,openJob,onCreated}:{jobs:Jo
     <div className="search"><Search size={18}/><input placeholder="Search job, customer, site, plot, PO…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
     {admin?<section className="panel"><JobTable jobs={jobs} openJob={openJob}/></section>:<div className="fitter-job-list">{jobs.map(j=><FitterJobCard key={j.id} job={j} openJob={openJob}/>)}{!jobs.length&&<section className="panel fitter-empty"><p>No assigned jobs found.</p></section>}</div>}
     {creating&&<NewJobModal sites={sites} onClose={()=>setCreating(false)} onDone={async()=>{setCreating(false);await onCreated()}}/>}
+  </>
+}
+
+function CompletedJobsPage({jobs,sites,search,setSearch,openJob}:{jobs:Job[],sites:Site[],search:string,setSearch:(s:string)=>void,openJob:(j:Job)=>void}){
+  const siteById=new Map(sites.map(s=>[s.id,s]))
+  const query=search.trim().toLowerCase()
+  const visibleJobs=jobs.filter(job=>{
+    const site=job.site_id?siteById.get(job.site_id):undefined
+    const builder=site?.developer||job.customer||''
+    const siteName=site?.name||job.site_name||''
+    return !query||[job.job_number,job.customer,builder,siteName,job.plot,job.po_number,job.flooring_type,job.status].join(' ').toLowerCase().includes(query)
+  })
+  const grouped=visibleJobs.reduce((builders,job)=>{
+    const site=job.site_id?siteById.get(job.site_id):undefined
+    const builder=(site?.developer||job.customer||'Private / Direct').trim()||'Private / Direct'
+    const siteName=(site?.name||job.site_name||'Private / Direct').trim()||'Private / Direct'
+    builders[builder]??={}
+    builders[builder][siteName]??=[]
+    builders[builder][siteName].push(job)
+    return builders
+  },{} as Record<string,Record<string,Job[]>>)
+
+  const builders=Object.keys(grouped).sort((a,b)=>a.localeCompare(b))
+
+  return <>
+    <div className="page-title"><div><h1>Completed Jobs</h1><p>Archived jobs filed by builder, then by site.</p></div></div>
+    <div className="search"><Search size={18}/><input placeholder="Search completed job, builder, site, plot, PO…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+    {!builders.length&&<section className="panel"><p className="empty">No completed jobs found.</p></section>}
+    {builders.map(builder=>{
+      const builderTotal=Object.keys(grouped[builder]).reduce((n,siteName)=>n+grouped[builder][siteName].length,0)
+      return <details key={builder} className="panel" open>
+        <summary style={{cursor:'pointer',fontWeight:800,fontSize:'1.05rem'}}>{builder} — {builderTotal} completed job{builderTotal===1?'':'s'}</summary>
+        <div style={{display:'grid',gap:'12px',marginTop:'14px'}}>
+          {Object.keys(grouped[builder]).sort((a,b)=>a.localeCompare(b)).map(siteName=>{
+            const siteJobs=[...grouped[builder][siteName]].sort((a,b)=>(b.install_date||'').localeCompare(a.install_date||''))
+            return <details key={siteName} style={{border:'1px solid rgba(148,163,184,.25)',borderRadius:'10px',padding:'10px 12px'}}>
+              <summary style={{cursor:'pointer',fontWeight:700}}>{siteName} — {siteJobs.length} job{siteJobs.length===1?'':'s'}</summary>
+              <div style={{marginTop:'10px'}}><JobTable jobs={siteJobs} openJob={openJob}/></div>
+            </details>
+          })}
+        </div>
+      </details>
+    })}
   </>
 }
 
@@ -277,7 +321,7 @@ function NewJobModal({sites,onClose,onDone}:{sites:Site[],onClose:()=>void,onDon
    <label>PO number<input value={form.po_number} onChange={e=>set('po_number',e.target.value)}/></label>
    <label>Install date<input type="date" value={form.install_date} onChange={e=>set('install_date',e.target.value)}/></label>
    <label>Flooring<select value={form.flooring_type} onChange={e=>set('flooring_type',e.target.value)}><option>LVT</option><option>Carpet</option><option>Vinyl</option><option>Latex / Prep</option><option>Mixed</option></select></label>
-   <label>Status<select value={form.status} onChange={e=>set('status',e.target.value)}><option>Booked</option><option>Prep</option><option>In Progress</option><option>Snag</option><option>Complete</option></select></label>
+   <label>Status<select value={form.status} onChange={e=>set('status',e.target.value)}><option>Booked</option><option>Prep</option><option>In Progress</option><option>Snag</option><option>Install Complete</option><option>Invoiced</option><option>Fitter Paid</option><option>Payment Received</option></select></label>
    <label className="span2">Address<input value={form.address} onChange={e=>set('address',e.target.value)}/></label>
    <label className="span2">Instructions<textarea value={form.instructions} onChange={e=>set('instructions',e.target.value)}/></label></div>
    {error&&<div className="error">{error}</div>}<div className="row end gap"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button" disabled={busy}>{busy?'Creating…':'Create job'}</button></div>
@@ -339,12 +383,29 @@ function PaymentsPage({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
 }
 
 function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],tab:Tab,setTab:(t:Tab)=>void,onBack:()=>void,onRefresh:()=>Promise<void>}){
- const tabs: {id:Tab,label:string,icon:any}[]=[
+ const archiveJob=async()=>{
+  if(!supabase)return
+  if(!window.confirm('Move this job to Completed?'))return
+  const {error}=await supabase.from('jobs').update({archived:true}).eq('id',job.id)
+  if(error){alert(error.message);return}
+  await onRefresh()
+  onBack()
+}
+
+const tabs: {id:Tab,label:string,icon:any}[]=[
   {id:'details',label:'Details',icon:FileText},{id:'notes',label:'Notes',icon:FileText},{id:'photos',label:'Photos',icon:Camera},
   {id:'variations',label:'Extras',icon:Plus},{id:'payments',label:'Payments',icon:CreditCard},{id:'checklist',label:'Checklist',icon:ClipboardCheck},{id:'signoff',label:'Sign-off',icon:CheckCircle2}
  ]
  return <>
-   <div className="job-head"><button className="button secondary" onClick={onBack}>← {admin?'Jobs':'My Jobs'}</button><div><h1>{job.job_number} <Status value={job.status}/></h1><p>{job.customer}{job.site_name?` • ${job.site_name}`:''}{job.plot?` • Plot ${job.plot}`:''}</p></div>{admin&&<button className="button secondary print-hide" onClick={()=>window.print()}>Print completion pack</button>}</div>
+   <div className="job-head">
+  <button className="button secondary" onClick={onBack}>← {admin?'Jobs':'My Jobs'}</button>
+  <div>
+    <h1>{job.job_number} <Status value={job.status}/></h1>
+    <p>{job.customer}{job.site_name?' • '+job.site_name:''}{job.plot?' • Plot '+job.plot:''}</p>
+  </div>
+  {admin&&<button className="button secondary print-hide" onClick={()=>window.print()}>Print completion pack</button>}
+  {admin&&!job.archived&&<button className="button" onClick={archiveJob}>Move to Completed</button>}
+</div>
    {!admin&&<FitterJobActions job={job} onRefresh={onRefresh}/>} 
    <div className="tabs">{tabs.filter(x=>admin||x.id!=='payments').map(x=><button key={x.id} className={tab===x.id?'active':''} onClick={()=>setTab(x.id)}><x.icon size={16}/>{x.label}</button>)}</div>
    {tab==='details'&&<DetailsTab job={job} admin={admin} profiles={profiles} sites={sites} onRefresh={onRefresh}/>}
@@ -358,39 +419,17 @@ function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job
 }
 
 function FitterJobActions({job,onRefresh}:{job:Job,onRefresh:()=>Promise<void>}){
- const update=async(status:'In Progress'|'Snag'|'Ready for Handover')=>{const {error}=await supabase!.from('jobs').update({status}).eq('id',job.id);if(error)alert(error.message);else await onRefresh()}
- return <section className="fitter-action-strip"><button className="button secondary" onClick={()=>update('In Progress')}><Play size={17}/>Start job</button><button className="button secondary danger-outline" onClick={()=>update('Snag')}><AlertTriangle size={17}/>Report snag</button><button className="button" onClick={()=>update('Ready for Handover')}><CheckCircle2 size={17}/>Ready for Handover</button></section>
+ const update=async(status:'In Progress'|'Snag'|'Install Complete')=>{const {error}=await supabase!.from('jobs').update({status}).eq('id',job.id);if(error)alert(error.message);else await onRefresh()}
+ return <section className="fitter-action-strip"><button className="button secondary" onClick={()=>update('In Progress')}><Play size={17}/>Start job</button><button className="button secondary danger-outline" onClick={()=>update('Snag')}><AlertTriangle size={17}/>Report snag</button><button className="button" onClick={()=>update('Install Complete')}><CheckCircle2 size={17}/>Install complete</button></section>
 }
 
 function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],onRefresh:()=>Promise<void>}){
- const statusStages=[
-  'Booked',
-  'Prep',
-  'In Progress',
-  'Ready for Handover',
-  'Complete',
-  'Invoiced',
-  'Paid'
-];
-
-const [statusOpen,setStatusOpen]=useState(false)
-const [form,setForm]=useState({...job,site_id:job.site_id||''})
+ const [form,setForm]=useState({...job,site_id:job.site_id||''})
  const [assignments,setAssignments]=useState<Assignment[]>([])
  const [fitter,setFitter]=useState('')
  useEffect(()=>{supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))},[job.id])
- const save=async()=>{const {site_name,created_at,sites,...payload}=form as any;const {error}=await supabase!
-  .from('jobs')
-  .update({...payload,site_id:payload.site_id||null})
-  .eq('id',job.id)
-
-if(error){
-  alert(error.message)
-  return
-}
-
-await onRefresh()}
+ const save=async()=>{const {site_name,created_at,...payload}=form as any;await supabase!.from('jobs').update({...payload,site_id:payload.site_id||null}).eq('id',job.id);await onRefresh()}
  const assign=async()=>{if(!fitter)return;await supabase!.from('job_assignments').upsert({job_id:job.id,fitter_id:fitter});setFitter('');const {data}=await supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id);setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name})))}
-
 const unassign=async(fitterId:string)=>{
   await supabase!.from('job_assignments')
     .delete()
@@ -427,35 +466,31 @@ const unassign=async(fitterId:string)=>{
   await onRefresh()
   window.location.reload()
 }
+
  return <section className="panel">
    <div className="form-grid">
     <label>Job number<input disabled={!admin} value={form.job_number} onChange={e=>setForm({...form,job_number:e.target.value})}/></label>
-    {admin&&<div className="span2" style={{display:'block'}}>
-  <button
-  type="button"
-  className="button secondary"
-  onClick={()=>setStatusOpen(!statusOpen)}
->
-  Status: {form.status} {statusOpen?'▲':'▼'}
-</button>
-  {statusOpen&&<div className="status-progress" style={{display:'flex',flexDirection:'column',gap:'8px',marginTop:'10px'}}>
-    {statusStages.map((stage,index)=>{
-      const currentIndex=statusStages.indexOf(form.status)
-      const checked=currentIndex>=0&&index<=currentIndex
+   {admin ? (
+  <details className="status-dropdown">
+    <summary>Status: {form.status}</summary>
 
-      return <div key={stage} style={{display:'flex',alignItems:'center',gap:'8px',justifyContent:'flex-start',width:'300px',whiteSpace:'nowrap'}}>
-        
+    <div className="status-checklist">
+      {['Booked','Prep','In Progress','Install Complete','Invoiced','Fitter Paid','Payment Received'].map((status,index,stages)=>(
+        <label key={status}>
           <input
-  type="checkbox"
-  checked={checked}
-  onChange={()=>setForm({...form,status:stage as any})}
-  style={{width:'18px',height:'18px',margin:0,flex:'0 0 18px'}}
-/>
-        {stage}
-      </div>
-    })}
-  </div>}
-</div>}
+            type="checkbox"
+            checked={stages.indexOf(form.status)>=index}
+            onChange={()=>setForm({...form,status:status as typeof form.status})}
+          />
+          {status}
+        </label>
+      ))}
+    </div>
+  </details>
+) : (
+  <div><strong>Status:</strong> {form.status}</div>
+)}
+
     <label>Install date<input disabled={!admin} type="date" value={form.install_date||''} onChange={e=>setForm({...form,install_date:e.target.value})}/></label>
     <label>Customer<input disabled={!admin} value={form.customer} onChange={e=>setForm({...form,customer:e.target.value})}/></label>
     <label>Site<select disabled={!admin} value={form.site_id||''} onChange={e=>setForm({...form,site_id:e.target.value})}><option value="">Private / no site</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
@@ -466,32 +501,8 @@ const unassign=async(fitterId:string)=>{
     <label className="span2">Access notes<textarea value={form.access_notes||''} onChange={e=>setForm({...form,access_notes:e.target.value})}/></label>
     <label className="span2">Installation instructions<textarea value={form.instructions||''} onChange={e=>setForm({...form,instructions:e.target.value})}/></label>
    </div>
-   <div className="row gap wrap"><button className="button" onClick={save}>Save changes</button>
-{admin&&<button
-  className="button secondary danger-outline"
-  onClick={deleteJob}
->
-  Delete job
-</button>}</div>
-   {admin&&<div className="subsection"><h3>Assigned fitters</h3><div className="chips">{assignments.map(a=><span className="chip" key={a.fitter_id}><>
-  {a.fitter_name||a.fitter_id}
-  <button
-    type="button"
-    onClick={()=>unassign(a.fitter_id)}
-    style={{
-      marginLeft:'10px',
-      padding:'4px 10px',
-      border:'1px solid #dc2626',
-      borderRadius:'6px',
-      background:'#dc2626',
-      color:'white',
-      cursor:'pointer',
-      fontWeight:700
-    }}
-  >
-    Remove
-  </button>
-</></span>)}</div><div className="row gap"><select value={fitter} onChange={e=>setFitter(e.target.value)}><option value="">Choose fitter…</option>{profiles.filter(p=>p.role==='fitter'&&p.active).map(p=><option value={p.id} key={p.id}>{p.full_name}</option>)}</select><button className="button secondary" onClick={assign}>Assign</button></div></div>}
+   <div className="row gap wrap"><button className="button" onClick={save}>Save changes</button>{admin&&<button className="button secondary danger-outline" onClick={deleteJob}>Delete job</button>}</div>
+   {admin&&<div className="subsection"><h3>Assigned fitters</h3><div className="chips">{assignments.map(a=><span className="chip" key={a.fitter_id}>{a.fitter_name||a.fitter_id}<button type="button" onClick={()=>unassign(a.fitter_id)} style={{marginLeft:'10px',padding:'4px 10px',border:'1px solid #dc2626',borderRadius:'6px',background:'#dc2626',color:'white',cursor:'pointer',fontWeight:700}}>Remove</button></span>)}</div><div className="row gap"><select value={fitter} onChange={e=>setFitter(e.target.value)}><option value="">Choose fitter…</option>{profiles.filter(p=>p.role==='fitter'&&p.active).map(p=><option value={p.id} key={p.id}>{p.full_name}</option>)}</select><button className="button secondary" onClick={assign}>Assign</button></div></div>}
  </section>
 }
 
