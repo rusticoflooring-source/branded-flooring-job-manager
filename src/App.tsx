@@ -428,7 +428,7 @@ function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,
  const [assignments,setAssignments]=useState<Assignment[]>([])
  const [fitter,setFitter]=useState('')
  useEffect(()=>{supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))},[job.id])
- const save=async()=>{const const {sites,site_name,created_at,...payload}=form as any;await supabase!.from('jobs').update({...payload,site_id:payload.site_id||null}).eq('id',job.id);await onRefresh()}
+ const save=async()=>{const {sites,site_name,created_at,...payload}=form as any;await supabase!.from('jobs').update({...payload,site_id:payload.site_id||null}).eq('id',job.id);await onRefresh()}
  const assign=async()=>{if(!fitter)return;await supabase!.from('job_assignments').upsert({job_id:job.id,fitter_id:fitter});setFitter('');const {data}=await supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id);setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name})))}
 const unassign=async(fitterId:string)=>{
   await supabase!.from('job_assignments')
