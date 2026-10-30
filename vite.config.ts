@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: { navigateFallbackDenylist: [/^\/api\//] },
       manifest: {
         name: 'Branded Flooring Job Manager',
         short_name: 'Branded Flooring',

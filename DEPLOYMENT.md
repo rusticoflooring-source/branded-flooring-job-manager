@@ -1,3 +1,5 @@
+For version 0.4.1, follow SETUP.md first. The historical instructions below describe initial setup and must not be rerun against an existing working database.
+
 # Branded Flooring Job Manager — deployment
 
 This package is the cloud-ready application. The source code is complete enough to run as a real multi-user starter, but **you must own the Supabase and Vercel accounts** and keep their credentials under your control.

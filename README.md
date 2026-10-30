@@ -1,3 +1,9 @@
+# Branded Flooring Job Manager 0.4.1
+
+Read START-HERE.md and SETUP.md for the AI jobs and Xero update. For an existing database, use the reviewed migrations; do not rerun the historical setup SQL.
+
+## Original project notes
+
 # Branded Flooring & Interiors Ltd — Job Manager
 
 A cloud-ready multi-user job management web application built specifically for flooring installation operations.
