@@ -18,11 +18,16 @@ export interface Job {
   id: string
 archived: boolean
   job_number: string
+  xero_number_managed?: boolean
+  xero_number_pending?: boolean
   customer: string
   site_id: string | null
   site_name?: string
   plot: string | null
   po_number: string | null
+  product_spec?: string | null
+  quantity?: number | null
+  quantity_unit?: string | null
   flooring_type: string
   status: JobStatus
   install_date: string | null
