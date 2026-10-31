@@ -22,7 +22,7 @@ export async function handler(req,res){
   let body;try{body=JSON.parse((await rawBody(req)).toString('utf8')||'{}');}catch(error){if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid input.');}
   if(route==='ai/extract')return json(res,200,await extractJobs(body,user));
   if(route==='ai/save')return json(res,200,await saveReviewedJob(body,user));
-  if(route==='xero/connect')return json(res,200,await startConnection(user,res));
+  if(route==='xero/connect')return json(res,200,await startConnection(user,res,req.headers.origin));
   if(route==='xero/select-tenant')return json(res,200,await selectTenant(body.tenant_id));
   if(route==='xero/draft'){await limited(user.id,'xero-draft',60);return json(res,200,await createDraft(body,user));}
   if(route==='xero/reset-pending')return json(res,200,await resetPending(body));

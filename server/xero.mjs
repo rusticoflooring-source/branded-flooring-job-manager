@@ -1,31 +1,34 @@
 import { randomBytes, createHmac } from 'node:crypto';
-import { db, env, HttpError, encrypt, decrypt, equal, sha, uuid, date, requireActiveAdmin, requestJSON, withLock } from './core.mjs';
+import { db, env, HttpError, encrypt, decrypt, equal, sha, uuid, date, requireActiveAdmin, requestJSON, withLock, trustedAppOrigin } from './core.mjs';
 const api='https://api.xero.com/api.xro/2.0/';
 const encode=encodeURIComponent;
 const quoted=value=>'"'+String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"';
 export async function connection(){return (await db('bf_xero_connection?id=eq.1&select=*'))?.[0]||null;}
 export async function xeroStatus(){const c=await connection();return {configured:Boolean(process.env.XERO_CLIENT_ID&&process.env.XERO_CLIENT_SECRET&&process.env.TOKEN_ENCRYPTION_KEY&&process.env.APP_URL&&process.env.XERO_SCOPES),connected:Boolean(c?.tenant_id),tenant_name:c?.tenant_name||null,tenants:c?.tenants||[],last_synced_at:c?.last_synced_at||null};}
-export async function startConnection(user,res){
+export async function startConnection(user,res,requestOrigin){
+ const origin=trustedAppOrigin(requestOrigin);
  const state=randomBytes(32).toString('hex');const expires=new Date(Date.now()+10*60000).toISOString();
  await db('bf_oauth_states',{method:'POST',body:JSON.stringify({state_hash:sha(state),user_id:user.id,expires_at:expires})});
- res.setHeader('Set-Cookie',`bf_xero_state=${state}; HttpOnly; Secure; SameSite=Lax; Path=/api/xero; Max-Age=600`);
- const params=new URLSearchParams({response_type:'code',client_id:env('XERO_CLIENT_ID'),redirect_uri:new URL('/api/xero/callback',env('APP_URL')).href,scope:env('XERO_SCOPES'),state});
+ res.setHeader('Set-Cookie',`bf_xero_state=${origin===new URL(env('APP_URL')).origin?state:state+'.'+Buffer.from(origin).toString('base64url')}; HttpOnly; Secure; SameSite=Lax; Path=/api/xero; Max-Age=600`);
+ const params=new URLSearchParams({response_type:'code',client_id:env('XERO_CLIENT_ID'),redirect_uri:new URL('/api/xero/callback',origin).href,scope:env('XERO_SCOPES'),state});
  return {url:'https://login.xero.com/identity/connect/authorize?'+params};
 }
 export async function tokenRequest(data){return requestJSON('https://identity.xero.com/connect/token',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(env('XERO_CLIENT_ID')+':'+env('XERO_CLIENT_SECRET')).toString('base64'),'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data).toString()},'Xero authorisation');}
 async function finishConnectionImpl(req,url,res){
  const state=url.searchParams.get('state');const cookie=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('bf_xero_state='))?.slice(14);
- if(!state||!equal(cookie,state))throw new HttpError(400,'The Xero connection expired. Start again from Accounts.');
+ const [cookieState,encodedOrigin,...extra]=(cookie||'').split('.');
+ if(!state||extra.length||!equal(cookieState,state))throw new HttpError(400,'The Xero connection expired. Start again from Accounts.');
+ const origin=trustedAppOrigin(encodedOrigin?Buffer.from(encodedOrigin,'base64url').toString('utf8'):undefined);
  res.setHeader('Set-Cookie','bf_xero_state=; HttpOnly; Secure; SameSite=Lax; Path=/api/xero; Max-Age=0');
  const states=await db(`bf_oauth_states?state_hash=eq.${sha(state)}&expires_at=gt.${encode(new Date().toISOString())}`,{method:'DELETE'});if(!states?.[0])throw new HttpError(400,'This connection request has expired or was already used.');
  if(url.searchParams.get('error'))throw new HttpError(400,'Xero connection was cancelled.');
  await requireActiveAdmin(states[0].user_id);const code=url.searchParams.get('code');if(!code)throw new HttpError(400,'Xero did not return an authorisation code.');
- const tokens=await tokenRequest({grant_type:'authorization_code',code,redirect_uri:new URL('/api/xero/callback',env('APP_URL')).href});
+ const tokens=await tokenRequest({grant_type:'authorization_code',code,redirect_uri:new URL('/api/xero/callback',origin).href});
  const tenants=await requestJSON('https://api.xero.com/connections',{headers:{Authorization:`Bearer ${tokens.access_token}`}},'Xero');
  const current=await connection();const compatible=tenants.filter(x=>x.tenantType==='ORGANISATION');if(!compatible.length)throw new HttpError(400,'No Xero organisation was connected.');
  const stillLinked=current?.tenant_id?compatible.find(x=>x.tenantId===current.tenant_id):null;
  await db('bf_xero_connection?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=representation'},body:JSON.stringify({id:1,token_ciphertext:encrypt(tokens),expires_at:new Date(Date.now()+Number(tokens.expires_in)*1000).toISOString(),connected_by:states[0].user_id,tenants:compatible.map(t=>({id:t.tenantId,name:t.tenantName})),tenant_id:stillLinked?.tenantId||null,tenant_name:stillLinked?.tenantName||null})});
- res.setHeader('Referrer-Policy','no-referrer');return res.status(303).setHeader('Location',new URL('/?xero=connected',env('APP_URL')).href).end();
+ res.setHeader('Referrer-Policy','no-referrer');return res.status(303).setHeader('Location',new URL('/?xero=connected',origin).href).end();
 }
 export async function selectTenant(id){uuid(id);return withLock('xero-organisation',async()=>{const c=await connection();const tenant=c?.tenants?.find(x=>x.id===id);if(!tenant)throw new HttpError(400,'Choose a connected organisation.');const links=await db('bf_xero_invoices?select=tenant_id&limit=1');if(links.length&&links[0].tenant_id!==id)throw new HttpError(409,'Existing invoices belong to the current organisation. Organisation changes require a migration.');await db('bf_xero_connection?id=eq.1',{method:'PATCH',body:JSON.stringify({tenant_id:id,tenant_name:tenant.name})});return {connected:true};});}
 async function accessToken(){let c=await connection();if(!c?.tenant_id)throw new HttpError(409,'Connect Xero and select your organisation first.');await requireActiveAdmin(c.connected_by);if(new Date(c.expires_at).getTime()>Date.now()+60000)return {c,tokens:decrypt(c.token_ciphertext)};
@@ -83,7 +86,8 @@ export async function resetPending(body){
 
 export async function finishConnection(req,url,res){
  const state=url.searchParams.get('state');const cookie=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('bf_xero_state='))?.slice(14);
- if(!state||!equal(cookie,state))throw new HttpError(400,'The Xero connection expired. Start again from Accounts.');
+ const [cookieState,encodedOrigin,...extra]=(cookie||'').split('.');
+ if(!state||extra.length||!equal(cookieState,state))throw new HttpError(400,'The Xero connection expired. Start again from Accounts.');
  return withLock('xero-organisation',()=>finishConnectionImpl(req,url,res));
 }
 

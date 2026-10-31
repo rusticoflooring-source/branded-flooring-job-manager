@@ -21,7 +21,13 @@ export async function requireAdmin(req){
  return {id:user.id,token};
 }
 export async function requireActiveAdmin(id){const rows=await db(`profiles?id=eq.${encodeURIComponent(id)}&select=role,active`);if(rows?.[0]?.role!=='admin'||!rows[0].active)throw new HttpError(403,'The administrator connection is no longer active.');}
-export function checkOrigin(req){if(req.headers.origin&&req.headers.origin!==new URL(env('APP_URL')).origin)throw new HttpError(403,'Please use the Job Manager website to make this request.');}
+export function trustedAppOrigin(value){
+ const primary=new URL(env('APP_URL')).origin;
+ const allowed=new Set([primary,...(process.env.APP_ALLOWED_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean).map(v=>new URL(v).origin)]);
+ let origin;try{origin=new URL(value||primary).origin}catch{throw new HttpError(403,'Please use the Job Manager website to make this request.');}
+ if(!allowed.has(origin))throw new HttpError(403,'Please use the Job Manager website to make this request.');return origin;
+}
+export function checkOrigin(req){if(req.headers.origin)trustedAppOrigin(req.headers.origin);} 
 export function uuid(value){if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new HttpError(400,'A valid record ID is required.');return value;}
 export function date(value){if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(new Date(value+'T12:00:00Z').getTime())||new Date(value+'T12:00:00Z').toISOString().slice(0,10)!==value)throw new HttpError(400,'Enter a valid date.');return value;}
 export async function limited(user,bucket,limit=20){const ok=await db('rpc/bf_take_api_slot',{method:'POST',body:JSON.stringify({p_user:user,p_bucket:bucket,p_limit:limit})});if(!ok)throw new HttpError(429,'The hourly limit has been reached. Please try again later.');}
