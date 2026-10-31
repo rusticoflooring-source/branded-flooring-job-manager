@@ -161,7 +161,7 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
 
   return <div className="shell">
     <aside className={mobileNav?'sidebar open':'sidebar'}>
-      <div className="brand"><div className="brand-mark">BF</div><div><strong>BRANDED FLOORING</strong><small>Job Manager</small></div></div>
+      <div className="brand company-brand"><img src="/company-logo.png" alt="Branded Flooring & Interiors"/><small>Job Manager</small></div>
       <nav>
         <NavButton icon={<BriefcaseBusiness/>} label={admin?'Dashboard':'My Jobs'} active={page==='dashboard'} onClick={()=>nav('dashboard')}/>
         <NavButton icon={<ClipboardCheck/>} label="Jobs" active={page==='jobs'}
@@ -196,7 +196,7 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
 function SetupScreen(){
   return <div className="center-screen setup">
     <div className="card narrow">
-      <div className="brand large"><div className="brand-mark">BF</div><div><strong>BRANDED FLOORING</strong><small>Cloud Job Manager</small></div></div>
+      <div className="brand large company-brand"><img src="/company-logo.png" alt="Branded Flooring & Interiors"/><small>Cloud Job Manager</small></div>
       <h1>Ready to connect</h1>
       <p>This production app is built, but it needs your Supabase project credentials before it can store real company data.</p>
       <ol><li>Create a Supabase project.</li><li>Run <code>supabase/schema.sql</code> in its SQL editor.</li><li>Copy <code>.env.example</code> to <code>.env.local</code> and add the project URL + anon key.</li><li>Run <code>npm install</code> then <code>npm run dev</code>.</li></ol>
