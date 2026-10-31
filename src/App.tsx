@@ -6,9 +6,15 @@ import {
 import { configured, supabase } from './lib/supabase'
 import type { Assignment, Job, JobFile, Note, Profile, Site, Variation } from './types'
 import SignaturePad from './components/SignaturePad'
+import AiJobModal from './components/AiJobModal'
+import IntegrationsPage from './components/IntegrationsPage'
+import XeroJobPanel from './components/XeroJobPanel'
+import JobSheet from './components/JobSheet'
+import { jobNumber } from './lib/jobNumber'
+import { getSevenDaySchedule } from './lib/schedule'
 
-type Page='dashboard'|'jobs'|'completed'|'sites'|'fitters'|'payments'|'job'
-type Tab='details'|'notes'|'photos'|'variations'|'payments'|'checklist'|'signoff'
+type Page='dashboard'|'jobs'|'completed'|'sites'|'fitters'|'payments'|'job'|'integrations'
+type Tab='details'|'invoice'|'notes'|'photos'|'variations'|'payments'|'checklist'|'signoff'
 
 const checklistSets:Record<string,string[]>={
   LVT:[
@@ -80,7 +86,8 @@ export default function App(){
   const [sessionUser,setSessionUser]=useState<string|null>(null)
   const [profile,setProfile]=useState<Profile|null>(null)
   const [loading,setLoading]=useState(true)
-  const [page,setPage]=useState<Page>('dashboard')
+  const [page,setPage]=useState<Page>(new URLSearchParams(window.location.search).has('xero')?'integrations':'dashboard')
+  const [aiOpen,setAiOpen]=useState(false)
   const [tab,setTab]=useState<Tab>('details')
   const [jobs,setJobs]=useState<Job[]>([])
   const [sites,setSites]=useState<Site[]>([])
@@ -120,10 +127,26 @@ export default function App(){
       supabase.from('sites').select('*').order('name'),
       role==='admin'?supabase.from('profiles').select('*').order('full_name'):Promise.resolve({data:[],error:null} as any)
     ])
-    setJobs((j.data||[]).map((x:any)=>({...x,site_name:x.sites?.name||''})))
-    setSites(s.data||[])
-    setProfiles(p.data||[])
+    if(!j.error)setJobs((j.data||[]).map((x:any)=>({...x,site_name:x.sites?.name||''})))
+    if(!s.error)setSites(s.data||[])
+    if(!p.error)setProfiles(p.data||[])
   }
+
+  useEffect(()=>{
+    if(profile?.role!=='admin'||page==='job')return
+    const update=()=>{if(!document.hidden)refresh('admin').catch(console.error)}
+    const timer=window.setInterval(update,60000)
+    document.addEventListener('visibilitychange',update)
+    return ()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',update)}
+  },[profile?.role,page])
+
+  useEffect(()=>{
+    const requested=new URLSearchParams(window.location.search).get('job')
+    if(loading||!profile||!requested)return
+    const job=jobs.find(j=>j.id===requested)
+    if(job){setSelected(job);setTab(job.xero_number_pending&&profile.role==='admin'?'invoice':'details');setPage('job')}
+    window.history.replaceState(null,'',window.location.pathname)
+  },[loading,profile?.id,jobs])
 
   if(loading)return <div className="center-screen"><div className="spinner"/><p>Loading Branded Flooring…</p></div>
   if(!configured)return <SetupScreen/>
@@ -133,7 +156,7 @@ export default function App(){
   const admin=profile.role==='admin'
   const filtered=jobs.filter(j=>!j.archived&&[j.job_number,j.customer,j.site_name,j.plot,j.po_number,j.flooring_type].join(' ').toLowerCase().includes(search.toLowerCase()))
 const completed=jobs.filter(j=>j.archived)
-const openJob=(j:Job)=>{setSelected(j);setTab('details');setPage('job')}
+const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invoice':'details');setPage('job')}
   const nav=(p:Page)=>{setPage(p);setMobileNav(false)}
 
   return <div className="shell">
@@ -146,7 +169,8 @@ const openJob=(j:Job)=>{setSelected(j);setTab('details');setPage('job')}
 {admin&&<NavButton icon={<ClipboardCheck/>} label="Completed" active={page==='completed'} onClick={()=>nav('completed')}/>}
         {admin&&<><NavButton icon={<Building2/>} label="Sites & Plots" active={page==='sites'} onClick={()=>nav('sites')}/>
         <NavButton icon={<Users/>} label="Fitters" active={page==='fitters'} onClick={()=>nav('fitters')}/>
-        <NavButton icon={<Wallet/>} label="Payments" active={page==='payments'} onClick={()=>nav('payments')}/></>}
+        <NavButton icon={<Wallet/>} label="Payments" active={page==='payments'} onClick={()=>nav('payments')}/>
+        <NavButton icon={<CreditCard/>} label="Accounts & AI" active={page==='integrations'} onClick={()=>nav('integrations')}/></>}
       </nav>
       <div className="sidebar-footer"><div><strong>{profile.full_name}</strong><small>{profile.role==='admin'?'Administrator':'Fitter account'}</small></div><button className="icon-btn" title="Sign out" onClick={()=>supabase!.auth.signOut()}><LogOut size={18}/></button></div>
     </aside>
@@ -155,11 +179,13 @@ const openJob=(j:Job)=>{setSelected(j);setTab('details');setPage('job')}
       <header className="topbar"><button className="icon-btn menu" onClick={()=>setMobileNav(!mobileNav)}>{mobileNav?<X/>:<Menu/>}</button><div><strong>Branded Flooring & Interiors Ltd</strong><span>{admin?'Admin portal':'Fitter portal'}</span></div></header>
       <div className="content">
         {page==='dashboard'&&<Dashboard jobs={jobs} admin={admin} openJob={openJob}/>}
-        {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()}/>}
+        {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()} onAi={()=>setAiOpen(true)}/>}
 {page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
         {page==='sites'&&admin&&<SitesPage sites={sites} jobs={jobs} onRefresh={async()=>refresh()}/>}
         {page==='fitters'&&admin&&<FittersPage profiles={profiles}/>}
         {page==='payments'&&admin&&<PaymentsPage jobs={jobs} openJob={openJob}/>}
+        {page==='integrations'&&admin&&<IntegrationsPage jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
+        {aiOpen&&admin&&<AiJobModal sites={sites} profiles={profiles} onClose={()=>setAiOpen(false)} onCreated={async()=>refresh()}/>}
         {page==='job'&&selected&&<JobPage job={selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
           onBack={()=>nav(selected.archived?'completed':'jobs')} onRefresh={async()=>{await refresh(); const {data}=await supabase!.from('jobs').select('*, sites(name)').eq('id',selected.id).single(); if(data)setSelected({...data,site_name:(data as any).sites?.name||''})}}/>}
       </div>
@@ -210,13 +236,11 @@ function Dashboard({jobs,admin,openJob}:{jobs:Job[],admin:boolean,openJob:(j:Job
   const complete=activeJobs.filter(j=>j.status==='Install Complete').length
   const outstanding=jobs.reduce((a,j)=>a+Math.max(0,Number(j.invoiced_value)-Number(j.paid_value)),0)
   const fitterDue=jobs.filter(j=>j.fitter_payment_status!=='Paid').reduce((a,j)=>a+Number(j.fitter_payment_due||0),0)
-  const today=new Date().toISOString().slice(0,10)
-  const todayJobs=activeJobs.filter(j=>j.install_date===today)
-  const nextJobs=activeJobs.filter(j=>!j.install_date||j.install_date>=today).slice(0,10)
+  const schedule=getSevenDaySchedule(jobs)
   return <>
     <div className="page-title"><div><h1>Operations Dashboard</h1><p>Live installation, payment and snag overview.</p></div></div>
     <div className="metrics"><Metric label="Active jobs" value={String(active)}/><Metric label="Install complete" value={String(complete)}/><Metric label="Outstanding invoices" value={money(outstanding)}/><Metric label="Fitter payments due" value={money(fitterDue)}/></div>
-    <section className="panel"><div className="panel-head"><div><h2>{todayJobs.length?'Today’s jobs':'Upcoming jobs — next 7 days'}</h2><p>{todayJobs.length?`${todayJobs.length} scheduled today`:'Next jobs in the programme'}</p></div></div><JobTable jobs={todayJobs.length?todayJobs:nextJobs} openJob={openJob}/></section>
+    <section className="panel"><div className="panel-head"><div><h2>Upcoming jobs — next 7 days</h2><p>{niceDate(schedule.startDate)} – {niceDate(schedule.endDate)} · {schedule.jobs.length} scheduled</p></div></div><JobTable jobs={schedule.jobs} openJob={openJob}/></section>
   </>
 }
 
@@ -236,7 +260,7 @@ function FitterDashboard({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
 
 function FitterJobCard({job,openJob}:{job:Job,openJob:(j:Job)=>void}){
   const maps=()=>job.address&&window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.address)}`,'_blank')
-  return <section className="panel fitter-job-card"><div className="fitter-card-top"><div><span className="eyebrow">{niceDate(job.install_date)} • {job.flooring_type}</span><h2>{job.site_name||job.customer}{job.plot?` — Plot ${job.plot}`:''}</h2><p><strong>{job.job_number}</strong>{job.po_number?` • PO ${job.po_number}`:''}</p></div><Status value={job.status}/></div>
+  return <section className="panel fitter-job-card"><div className="fitter-card-top"><div><span className="eyebrow">{niceDate(job.install_date)} • {job.flooring_type}</span><h2>{job.site_name||job.customer}{job.plot?` — Plot ${job.plot}`:''}</h2><p><strong>{jobNumber(job)}</strong>{job.po_number?` • PO ${job.po_number}`:''}</p></div><Status value={job.status}/></div>
     {job.address&&<div className="fitter-address"><MapPin size={18}/><span>{job.address}</span></div>}
     {job.instructions&&<div className="fitter-instruction"><strong>Instructions</strong><p>{job.instructions}</p></div>}
     <div className="fitter-card-actions">{job.address&&<button className="button secondary" onClick={maps}><MapPin size={17}/>Directions</button>}<button className="button fitter-open" onClick={()=>openJob(job)}>Open job →</button></div></section>
@@ -244,14 +268,14 @@ function FitterJobCard({job,openJob}:{job:Job,openJob:(j:Job)=>void}){
 
 function Metric({label,value}:{label:string,value:string}){return <div className="metric"><span>{label}</span><strong>{value}</strong></div>}
 
-function JobsPage({jobs,sites,admin,search,setSearch,openJob,onCreated}:{jobs:Job[],sites:Site[],admin:boolean,search:string,setSearch:(s:string)=>void,openJob:(j:Job)=>void,onCreated:()=>Promise<void>}){
+function JobsPage({jobs,sites,admin,search,setSearch,openJob,onCreated,onAi}:{jobs:Job[],sites:Site[],admin:boolean,search:string,setSearch:(s:string)=>void,openJob:(j:Job)=>void,onCreated:()=>Promise<void>,onAi:()=>void}){
   const [creating,setCreating]=useState(false)
   return <>
     <div className="page-title"><div><h1>{admin?'Jobs':'My Jobs'}</h1><p>{admin?'Create, schedule and manage installations.':'Open a job to upload photos, notes and complete your checklist.'}</p></div>
-      {admin&&<button className="button" onClick={()=>setCreating(true)}><Plus size={18}/>New job</button>}</div>
+      {admin&&<div className="row gap wrap"><button className="button secondary" onClick={onAi}>Create job with AI</button><button className="button" onClick={()=>setCreating(true)}><Plus size={18}/>New job</button></div>}</div>
     <div className="search"><Search size={18}/><input placeholder="Search job, customer, site, plot, PO…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
     {admin?<section className="panel"><JobTable jobs={jobs} openJob={openJob}/></section>:<div className="fitter-job-list">{jobs.map(j=><FitterJobCard key={j.id} job={j} openJob={openJob}/>)}{!jobs.length&&<section className="panel fitter-empty"><p>No assigned jobs found.</p></section>}</div>}
-    {creating&&<NewJobModal sites={sites} onClose={()=>setCreating(false)} onDone={async()=>{setCreating(false);await onCreated()}}/>}
+    {creating&&<NewJobModal sites={sites} onClose={()=>setCreating(false)} onDone={async(created)=>{setCreating(false);await onCreated();if(created)openJob(created)}}/>}
   </>
 }
 
@@ -300,21 +324,23 @@ function CompletedJobsPage({jobs,sites,search,setSearch,openJob}:{jobs:Job[],sit
 
 function JobTable({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
  return <div className="table-wrap"><table><thead><tr><th>Job</th><th>Customer / Site</th><th>Plot</th><th>Install</th><th>Flooring</th><th>Status</th><th></th></tr></thead>
- <tbody>{jobs.map(j=><tr key={j.id}><td><strong>{j.job_number}</strong><small>{j.po_number||'No PO'}</small></td><td>{j.customer}<small>{j.site_name||'Private / direct'}</small></td><td>{j.plot||'—'}</td><td>{niceDate(j.install_date)}</td><td>{j.flooring_type}</td><td><Status value={j.status}/></td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}
+ <tbody>{jobs.map(j=><tr key={j.id}><td><strong>{jobNumber(j)}</strong><small>{j.po_number||'No PO'}</small></td><td>{j.customer}<small>{j.site_name||'Private / direct'}</small></td><td>{j.plot||'—'}</td><td>{niceDate(j.install_date)}</td><td>{j.flooring_type}</td><td><Status value={j.status}/></td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}
  {!jobs.length&&<tr><td colSpan={7} className="empty">No jobs found.</td></tr>}</tbody></table></div>
 }
 
-function NewJobModal({sites,onClose,onDone}:{sites:Site[],onClose:()=>void,onDone:()=>Promise<void>}){
+function NewJobModal({sites,onClose,onDone}:{sites:Site[],onClose:()=>void,onDone:(created?:Job)=>Promise<void>}){
  const [form,setForm]=useState({job_number:'',customer:'',site_id:'',plot:'',po_number:'',flooring_type:'LVT',status:'Booked',install_date:'',address:'',instructions:''})
+ const [useXeroNumber,setUseXeroNumber]=useState(true),[requestId]=useState(()=>crypto.randomUUID())
  const [busy,setBusy]=useState(false),[error,setError]=useState('')
  const set=(k:string,v:string)=>setForm(f=>({...f,[k]:v}))
  const save=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('')
-   const payload={...form,site_id:form.site_id||null,install_date:form.install_date||null,plot:form.plot||null,po_number:form.po_number||null}
-   const {error}=await supabase!.from('jobs').insert(payload)
-   if(error){setError(error.message);setBusy(false)} else await onDone()
+   const payload={...form,job_number:useXeroNumber?'AWAITING-'+requestId:form.job_number,xero_number_pending:useXeroNumber,site_id:form.site_id||null,install_date:form.install_date||null,plot:form.plot||null,po_number:form.po_number||null}
+   const {data,error}=await supabase!.from('jobs').insert(payload).select('*, sites(name)').single()
+   if(error){setError(error.message);setBusy(false)} else await onDone(data?{...data,site_name:(data as any).sites?.name||''}:undefined)
  }
  return <div className="modal-bg"><form className="modal card" onSubmit={save}><div className="panel-head"><h2>New job</h2><button type="button" className="icon-btn" onClick={onClose}><X/></button></div>
-   <div className="form-grid"><label>Job number<input value={form.job_number} onChange={e=>set('job_number',e.target.value)} placeholder="BF-1032" required/></label>
+   <label className="review-check"><input type="checkbox" checked={useXeroNumber} onChange={e=>setUseXeroNumber(e.target.checked)}/>Use the Xero invoice number as the job number. After saving, review the draft invoice to assign it.</label>
+   <div className="form-grid"><label>Job number<input disabled={useXeroNumber} value={useXeroNumber?'':form.job_number} onChange={e=>set('job_number',e.target.value)} placeholder={useXeroNumber?'Assigned by Xero after draft review':'BF-1032'} required={!useXeroNumber}/></label>
    <label>Customer / developer<input value={form.customer} onChange={e=>set('customer',e.target.value)} required/></label>
    <label>Site<select value={form.site_id} onChange={e=>set('site_id',e.target.value)}><option value="">Private / no site</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
    <label>Plot<input value={form.plot} onChange={e=>set('plot',e.target.value)}/></label>
@@ -379,10 +405,11 @@ function PaymentsPage({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
  const due=jobs.filter(j=>j.fitter_payment_status!=='Paid').reduce((a,j)=>a+Number(j.fitter_payment_due||0),0)
  return <><div className="page-title"><div><h1>Payments</h1><p>Customer receipts and fitter labour due by job.</p></div></div>
  <div className="metrics"><Metric label="Customer invoiced" value={money(invoiced)}/><Metric label="Customer received" value={money(paid)}/><Metric label="Customer outstanding" value={money(invoiced-paid)}/><Metric label="Fitter payments due" value={money(due)}/></div>
- <section className="panel"><div className="table-wrap"><table><thead><tr><th>Job</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Outstanding</th><th>Fitters due</th><th></th></tr></thead><tbody>{jobs.map(j=><tr key={j.id}><td>{j.job_number}</td><td>{j.customer}</td><td>{money(j.invoiced_value)}</td><td>{money(j.paid_value)}</td><td>{money(Number(j.invoiced_value)-Number(j.paid_value))}</td><td>{money(j.fitter_payment_due)}</td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}</tbody></table></div></section></>
+ <section className="panel"><div className="table-wrap"><table><thead><tr><th>Job</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Outstanding</th><th>Fitters due</th><th></th></tr></thead><tbody>{jobs.map(j=><tr key={j.id}><td>{jobNumber(j)}</td><td>{j.customer}</td><td>{money(j.invoiced_value)}</td><td>{money(j.paid_value)}</td><td>{money(Number(j.invoiced_value)-Number(j.paid_value))}</td><td>{money(j.fitter_payment_due)}</td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}</tbody></table></div></section></>
 }
 
 function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],tab:Tab,setTab:(t:Tab)=>void,onBack:()=>void,onRefresh:()=>Promise<void>}){
+ const [sheetOpen,setSheetOpen]=useState(false)
  const archiveJob=async()=>{
   if(!supabase)return
   if(!window.confirm('Move this job to Completed?'))return
@@ -393,26 +420,30 @@ function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job
 }
 
 const tabs: {id:Tab,label:string,icon:any}[]=[
-  {id:'details',label:'Details',icon:FileText},{id:'notes',label:'Notes',icon:FileText},{id:'photos',label:'Photos',icon:Camera},
+  {id:'details',label:'Details',icon:FileText},{id:'invoice',label:'Xero draft',icon:CreditCard},{id:'notes',label:'Notes',icon:FileText},{id:'photos',label:'Photos',icon:Camera},
   {id:'variations',label:'Extras',icon:Plus},{id:'payments',label:'Payments',icon:CreditCard},{id:'checklist',label:'Checklist',icon:ClipboardCheck},{id:'signoff',label:'Sign-off',icon:CheckCircle2}
  ]
  return <>
    <div className="job-head">
+  {sheetOpen&&<JobSheet job={job} onClose={()=>setSheetOpen(false)}/>}
+  <button className="button secondary print-hide" onClick={()=>setSheetOpen(true)}>Installation job sheet</button>
   <button className="button secondary" onClick={onBack}>← {admin?'Jobs':'My Jobs'}</button>
   <div>
-    <h1>{job.job_number} <Status value={job.status}/></h1>
+    <h1>{jobNumber(job)} <Status value={job.status}/></h1>
     <p>{job.customer}{job.site_name?' • '+job.site_name:''}{job.plot?' • Plot '+job.plot:''}</p>
   </div>
-  {admin&&<button className="button secondary print-hide" onClick={()=>window.print()}>Print completion pack</button>}
+  {admin&&<button className="button secondary print-hide" disabled={job.xero_number_pending} onClick={()=>window.print()}>Print completion pack</button>}
   {admin&&!job.archived&&<button className="button" onClick={archiveJob}>Move to Completed</button>}
 </div>
+   {admin&&job.xero_number_managed&&['Install Complete','Complete'].includes(job.status)&&<div className="review-notice"><strong>Installation complete — review the existing Xero invoice</strong><p>Check final quantities and variations, then approve and send that same invoice in Xero.</p><button className="button secondary" onClick={()=>setTab('invoice')}>Review linked invoice</button></div>}
    {!admin&&<FitterJobActions job={job} onRefresh={onRefresh}/>} 
-   <div className="tabs">{tabs.filter(x=>admin||x.id!=='payments').map(x=><button key={x.id} className={tab===x.id?'active':''} onClick={()=>setTab(x.id)}><x.icon size={16}/>{x.label}</button>)}</div>
+   <div className="tabs">{tabs.filter(x=>admin||(x.id!=='payments'&&x.id!=='invoice')).map(x=><button key={x.id} className={tab===x.id?'active':''} onClick={()=>setTab(x.id)}><x.icon size={16}/>{x.label}</button>)}</div>
    {tab==='details'&&<DetailsTab job={job} admin={admin} profiles={profiles} sites={sites} onRefresh={onRefresh}/>}
    {tab==='notes'&&<NotesTab job={job} admin={admin}/>}
    {tab==='photos'&&<PhotosTab job={job} admin={admin}/>}
    {tab==='variations'&&<VariationsTab job={job} admin={admin} onRefresh={onRefresh}/>}
-   {tab==='payments'&&admin&&<JobPayments job={job} onRefresh={onRefresh}/>}
+   {tab==='payments'&&admin&&<><JobPayments job={job} onRefresh={onRefresh}/><XeroJobPanel job={job} onRefresh={onRefresh}/></>}
+   {tab==='invoice'&&admin&&<XeroJobPanel job={job} onRefresh={onRefresh}/>} 
    {tab==='checklist'&&<ChecklistTab job={job}/>}
    {tab==='signoff'&&<SignoffTab job={job}/>}
  </>
@@ -428,7 +459,11 @@ function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,
  const [assignments,setAssignments]=useState<Assignment[]>([])
  const [fitter,setFitter]=useState('')
  useEffect(()=>{supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))},[job.id])
- const save=async()=>{const {sites,site_name,created_at,...payload}=form as any;await supabase!.from('jobs').update({...payload,site_id:payload.site_id||null}).eq('id',job.id);await onRefresh()}
+ const save=async()=>{
+   const payload=admin?{job_number:form.job_number,customer:form.customer,site_id:form.site_id||null,plot:form.plot,po_number:form.po_number,flooring_type:form.flooring_type,status:form.status,install_date:form.install_date,address:form.address,access_notes:form.access_notes,instructions:form.instructions,product_spec:form.product_spec,quantity:form.quantity,quantity_unit:form.quantity_unit}:{access_notes:form.access_notes,instructions:form.instructions}
+   const {error}=await supabase!.from('jobs').update(payload).eq('id',job.id)
+   if(error){alert(error.message);return}await onRefresh()
+ }
  const assign=async()=>{if(!fitter)return;await supabase!.from('job_assignments').upsert({job_id:job.id,fitter_id:fitter});setFitter('');const {data}=await supabase!.from('job_assignments').select('job_id,fitter_id,profiles(full_name)').eq('job_id',job.id);setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name})))}
 const unassign=async(fitterId:string)=>{
   await supabase!.from('job_assignments')
@@ -449,7 +484,7 @@ const unassign=async(fitterId:string)=>{
 
 };const deleteJob=async()=>{
   const confirmed=window.confirm(
-    `Permanently delete job ${job.job_number}? This cannot be undone.`
+    `Permanently delete job ${jobNumber(job)}? This cannot be undone.`
   )
   if(!confirmed)return
 
@@ -469,7 +504,7 @@ const unassign=async(fitterId:string)=>{
 
  return <section className="panel">
    <div className="form-grid">
-    <label>Job number<input disabled={!admin} value={form.job_number} onChange={e=>setForm({...form,job_number:e.target.value})}/></label>
+    <label>Job number<input disabled={!admin||job.xero_number_managed||job.xero_number_pending} value={form.job_number} onChange={e=>setForm({...form,job_number:e.target.value})}/></label>
    {admin ? (
   <details className="status-dropdown">
     <summary>Status: {form.status}</summary>
@@ -498,6 +533,9 @@ const unassign=async(fitterId:string)=>{
     <label>PO number<input disabled={!admin} value={form.po_number||''} onChange={e=>setForm({...form,po_number:e.target.value})}/></label>
     <label>Flooring<input disabled={!admin} value={form.flooring_type} onChange={e=>setForm({...form,flooring_type:e.target.value})}/></label>
     <label className="span2">Address<input disabled={!admin} value={form.address||''} onChange={e=>setForm({...form,address:e.target.value})}/></label>
+    <label className="span2">Product specification<input disabled={!admin} value={form.product_spec||''} onChange={e=>setForm({...form,product_spec:e.target.value})}/></label>
+    <label>Quantity<input disabled={!admin} type="number" min="0" step="0.001" value={form.quantity??''} onChange={e=>setForm({...form,quantity:e.target.value===''?null:Number(e.target.value)})}/></label>
+    <label>Quantity unit<input disabled={!admin} value={form.quantity_unit||''} onChange={e=>setForm({...form,quantity_unit:e.target.value})}/></label>
     <label className="span2">Access notes<textarea value={form.access_notes||''} onChange={e=>setForm({...form,access_notes:e.target.value})}/></label>
     <label className="span2">Installation instructions<textarea value={form.instructions||''} onChange={e=>setForm({...form,instructions:e.target.value})}/></label>
    </div>
@@ -607,6 +645,7 @@ function VariationsTab({job,admin,onRefresh}:{job:Job,admin:boolean,onRefresh:()
 
 function JobPayments({job,onRefresh}:{job:Job,onRefresh:()=>Promise<void>}){
  const [f,setF]=useState(job)
+ useEffect(()=>setF(job),[job])
  const save=async()=>{const {site_name,created_at,...rest}=f as any;await supabase!.from('jobs').update({contract_value:rest.contract_value,extras_value:rest.extras_value,invoiced_value:rest.invoiced_value,paid_value:rest.paid_value,fitter_payment_due:rest.fitter_payment_due,fitter_payment_status:rest.fitter_payment_status}).eq('id',job.id);await onRefresh()}
  return <section className="panel"><div className="metrics mini"><Metric label="Job total" value={money(Number(f.contract_value)+Number(f.extras_value))}/><Metric label="Customer outstanding" value={money(Number(f.invoiced_value)-Number(f.paid_value))}/><Metric label="Fitters due" value={money(f.fitter_payment_due)}/></div>
  <div className="form-grid">{[['Contract value','contract_value'],['Extras / variations','extras_value'],['Invoiced','invoiced_value'],['Customer paid','paid_value'],['Fitter payment due','fitter_payment_due']].map(([label,key])=><label key={key}>{label} (£)<input type="number" step="0.01" value={(f as any)[key]} onChange={e=>setF({...f,[key]:Number(e.target.value)})}/></label>)}<label>Fitter payment status<select value={f.fitter_payment_status} onChange={e=>setF({...f,fitter_payment_status:e.target.value as any})}><option>Due</option><option>Approved</option><option>Paid</option></select></label></div><button className="button" onClick={save}>Save payments</button></section>

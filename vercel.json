@@ -1,5 +1,18 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/api/:path*",
+      "destination": "/api/router?_bf_route=:path*"
+    },
+    {
+      "source": "/((?!api(?:/|$)).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/xero/sync-cron",
+      "schedule": "0 6 * * *"
+    }
   ]
 }
