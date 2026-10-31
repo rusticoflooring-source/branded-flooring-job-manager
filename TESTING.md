@@ -10,7 +10,7 @@
 
 The provider tests use synthetic fixtures and mocked HTTP responses. They do not demonstrate a real AI model's extraction accuracy, real Xero consent, live database policy execution or successful payment reconciliation against your accounts.
 
-The cloud preview and live app were inspected in the browser. Manual test booking, saved-date dashboard filtering, pending numbering and Xero contact/account/tax selection were checked. Print layout, dictation and uploaded AI document formats still require acceptance testing.
+The cloud preview and live app were inspected in the browser. Manual test booking, saved-date dashboard filtering, pending numbering and Xero contact/account/tax selection were checked. A fictional PDF purchase-order upload also passed through the live AI backend. Print layout, dictation, Word uploads and photos still require acceptance testing.
 
 The full test, TypeScript, Vite and PWA build passed in Vercel. Migrations ran successfully on a separate test project and the live database. PostgreSQL role, duplicate-save, atomic-assignment, progress, invoice-number collision/recovery and payment-snapshot checks passed using rolled-back synthetic fixtures. A private before/after comparison confirmed preservation of existing values across all eight live app tables.
 
@@ -39,4 +39,4 @@ These database and live-provider tests remain pending; automated provider tests 
 
 ## Live release status — 31 October 2026
 
-The production app and Xero connection are live. Manual sync succeeded with zero linked invoices. The scheduled sync endpoint returned HTTP 200 when run from Vercel; the daily schedule is enabled. No real invoice was created, approved or emailed during these checks. AI configuration is deployed but an extraction attempt returned provider HTTP 429 while OpenAI billing showed $0 API credit. Fund API billing, then verify real extraction before treating it as accepted. The initial AI key was prepared with a 30-day expiry; the account owner should confirm its expiry and rotate it in time for continued use.
+The production app and Xero connection are live. Manual sync succeeded with zero linked invoices. The scheduled sync endpoint returned HTTP 200 when run from Vercel; the daily schedule is enabled. No real invoice was created, approved or emailed during these checks. AI configuration is deployed. After the account owner funded API billing, a typed fictional job was extracted accurately and saved after review in the test database. A fictional PDF PO uploaded through the live backend was extracted accurately (customer, plot, PO, date, product, quantity and price), with missing site/fitter flagged. That live draft was closed without saving a job or creating an invoice. The earlier provider 429 cleared after funding. The initial AI key was prepared with a 30-day expiry; the account owner should confirm its expiry and rotate it in time for continued use.

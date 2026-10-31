@@ -1,6 +1,6 @@
 # Branded Flooring Job Manager 0.4.1 — AI jobs and Xero
 
-This is the complete updated source code, built on GitHub main commit `b238924787eed0eb5d73d878c7b7e49fb6189191`. It implements the requirements in the pasted Custom Job Management System conversation. The update was deployed to the existing live app on 31 October 2026. The live Xero company connection and manual sync were verified. AI settings are deployed, but the real extraction check returned OpenAI 429 while API billing showed $0 credit; fund API usage before testing AI.
+This is the complete updated source code, built on GitHub main commit `b238924787eed0eb5d73d878c7b7e49fb6189191`. It implements the requirements in the pasted Custom Job Management System conversation. The update was deployed to the existing live app on 31 October 2026. The live Xero company connection and manual sync were verified. After API billing was funded, typed AI extraction and reviewed test-job saving succeeded. A fictional PDF purchase order was also extracted successfully through the live backend without saving a live job or creating an invoice.
 
 ## Included
 

@@ -90,7 +90,7 @@ The app does not delete a Xero invoice when a job is deleted locally. Any accoun
 
 Follow TESTING.md with staging admin and fitter accounts. Confirm the full production build, database migration, OAuth callback, AI extraction and Xero draft/payment sync with your own configured services. Review an actual test job sheet on desktop and mobile. Only then publish to the live project, preserving its existing environment settings.
 
-Deployment status: the live database migrations and production release were completed on 31 October 2026, preserving all existing record values. Live Xero authorisation and sync were verified. Real AI extraction remains blocked on API credit; invoice creation against the real company has not been exercised during acceptance checks.
+Deployment status: the live database migrations and production release were completed on 31 October 2026, preserving all existing record values. Live Xero authorisation and sync were verified. API billing was subsequently funded. Typed AI extraction, reviewed saving in the test database, and a live-backend fictional PDF PO extraction passed. Invoice creation against the real company has not been exercised during acceptance checks.
 
 ## Official implementation references
 
