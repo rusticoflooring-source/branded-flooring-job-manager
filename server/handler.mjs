@@ -3,7 +3,7 @@ import { extractJobs, saveReviewedJob } from './ai.mjs';
 import { xeroStatus, startConnection, finishConnection, selectTenant, invoiceOptions, createDraft, syncInvoices, receiveWebhook, resetPending } from './xero.mjs';
 export async function handler(req,res){
  try{
-  const url=new URL(req.url,process.env.APP_URL||'http://localhost:3000');const route=url.pathname.replace(/^\/api\//,'');
+  const url=new URL(req.url,process.env.APP_URL||'http://localhost:3000');const route=url.searchParams.get('_bf_route')||url.pathname.replace(/^\/api\//,'');
   if(route==='xero/callback'&&req.method==='GET')return await finishConnection(req,url,res);
   if(route==='xero/webhook'&&req.method==='POST'){await receiveWebhook(req,await rawBody(req,500000));return json(res,200,{received:true});}
   if(route==='xero/sync-cron'&&req.method==='GET'){
