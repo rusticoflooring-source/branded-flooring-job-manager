@@ -18,7 +18,7 @@ Create `.env.local` locally using the two `VITE_SUPABASE_...` variables in `.env
 
 Do not rerun the old root `schema.sql` against your existing live database.
 
-First back up the existing database and review its actual schema, policies and triggers. Run `supabase/migrations/001_job_status_compatibility.sql` and let it commit. Then run `002_ai_xero.sql` separately, followed by `003_xero_job_numbers.sql`. If 001 and 002 were already applied for 0.4.0, review and apply only the new 003 migration. Test both against staging before production.
+First back up the existing database and review its actual schema, policies and triggers. Run `supabase/migrations/001_job_status_compatibility.sql` and let it commit. Then run `002_ai_xero.sql` separately, followed by `003_xero_job_numbers.sql` and `004_server_read_access.sql`. If 001 and 002 were already applied for 0.4.0, review and apply only the new 003 migration. Test both against staging before production.
 
 The migrations preserve existing rows, add optional product/quantity fields and the archive field if missing, and create isolated tables for reviewed-job requests, rate limits, OAuth state, encrypted Xero tokens, invoice summaries and locks. New token/state tables have no browser read policies. Only invoice-summary columns are available to authenticated admins.
 
@@ -28,7 +28,7 @@ The AI save function creates a job and its fitter assignment in one transaction.
 
 ## 3. Configure the AI connection
 
-Set `OPENAI_API_KEY` on the server and choose an available model supporting Responses API file/image inputs and structured outputs in `OPENAI_MODEL`. The example uses `gpt-4.1-mini`; confirm availability in your account. No API keys go into the browser bundle. API usage can incur charges.
+Set `OPENAI_API_KEY` on the server and choose an available model supporting Responses API file/image inputs and structured outputs in `OPENAI_MODEL`. The example uses `gpt-5.4-mini`; confirm availability in your account. No API keys go into the browser bundle. API usage can incur charges.
 
 Only active admins may use AI creation. Requests are limited to 20 per admin per hour. Uploads allow up to four supported files totalling 2.5 MB to remain within the server request-size limit. Larger source material should be split or reduced before upload.
 
@@ -44,7 +44,7 @@ Create a standard OAuth 2.0 web app in your Xero developer account. Register thi
 https://YOUR-APP-ORIGIN/api/xero/callback
 ```
 
-Set `APP_URL` to that same origin, with no path. Set `XERO_CLIENT_ID` and `XERO_CLIENT_SECRET` on the server. The requested granular scopes are:
+Set `APP_URL` to that same origin, with no path. For additional controlled app domains, set a comma-separated `APP_ALLOWED_ORIGINS` allowlist and register each corresponding callback in Xero. OAuth uses a browser-bound state cookie and returns to its initiating trusted origin. Set `XERO_CLIENT_ID` and `XERO_CLIENT_SECRET` on the server. The requested granular scopes are:
 
 ```
 offline_access accounting.invoices accounting.contacts.read accounting.settings.read
@@ -90,7 +90,7 @@ The app does not delete a Xero invoice when a job is deleted locally. Any accoun
 
 Follow TESTING.md with staging admin and fitter accounts. Confirm the full production build, database migration, OAuth callback, AI extraction and Xero draft/payment sync with your own configured services. Review an actual test job sheet on desktop and mobile. Only then publish to the live project, preserving its existing environment settings.
 
-No production deployment, account consent, API purchase, customer-data upload or live database modification was performed while preparing this code.
+Deployment status: the live database migrations and production release were completed on 31 October 2026, preserving all existing record values. Live Xero authorisation and sync were verified. Real AI extraction remains blocked on API credit; invoice creation against the real company has not been exercised during acceptance checks.
 
 ## Official implementation references
 

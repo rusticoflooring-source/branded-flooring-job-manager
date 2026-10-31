@@ -1,18 +1,18 @@
 # Verification and release checklist
 
-## Completed locally
+## Completed checks
 
 - Updated frontend source passed TypeScript checking using the laptop's existing React, Supabase and TypeScript dependency versions.
 - The full frontend, including the new components and actual Supabase integration module, bundled successfully with esbuild. This is a frontend compilation check, not the full Vite/PWA production build.
-- 44 automated tests passed. Seven cover schedule filtering/calendar boundaries; thirty-seven cover AI inputs/review, validation, authentication/roles, origin checks, atomic-save RPC requests, encrypted tokens, invoice payloads, duplicate/ambiguous request recovery, organisation isolation, webhook verification and cron authorisation.
+- 46 automated tests passed. Seven cover schedule filtering/calendar boundaries, two cover trusted origins/OAuth callbacks, and thirty-seven cover AI inputs/review, validation, authentication/roles, origin checks, atomic-save RPC requests, encrypted tokens, invoice payloads, duplicate/ambiguous request recovery, organisation isolation, webhook verification and cron authorisation.
 - Backend modules passed Node.js syntax checks.
 - Existing non-modified frontend functions/assets are retained from the latest GitHub baseline. Added routes/screens wrap the existing workflows rather than replacing them.
 
 The provider tests use synthetic fixtures and mocked HTTP responses. They do not demonstrate a real AI model's extraction accuracy, real Xero consent, live database policy execution or successful payment reconciliation against your accounts.
 
-The machine blocked local loopback access, so the browser preview could not be inspected. Responsive/mobile layout, print layout and dictation require visual acceptance testing.
+The cloud preview and live app were inspected in the browser. Manual test booking, saved-date dashboard filtering, pending numbering and Xero contact/account/tax selection were checked. Print layout, dictation and uploaded AI document formats still require acceptance testing.
 
-The full `npm ci` / `npm run build` with the PWA plugin remains to be run in a configured development/staging environment. Database migrations were prepared but not executed: no database server or authenticated staging connection was used here.
+The full test, TypeScript, Vite and PWA build passed in Vercel. Migrations ran successfully on a separate test project and the live database. PostgreSQL role, duplicate-save, atomic-assignment, progress, invoice-number collision/recovery and payment-snapshot checks passed using rolled-back synthetic fixtures. A private before/after comparison confirmed preservation of existing values across all eight live app tables.
 
 ## Before release
 
@@ -36,3 +36,7 @@ The full `npm ci` / `npm run build` with the PWA plugin remains to be run in a c
 - Confirm a DRAFT invoice created for a Booked job does not mark that installation complete or increase issued revenue. On completion, verify the prompt opens the existing draft for review/send rather than creating a second invoice.
 
 These database and live-provider tests remain pending; automated provider tests use mocked responses.
+
+## Live release status — 31 October 2026
+
+The production app and Xero connection are live. Manual sync succeeded with zero linked invoices. The scheduled sync endpoint returned HTTP 200 when run from Vercel; the daily schedule is enabled. No real invoice was created, approved or emailed during these checks. AI configuration is deployed but an extraction attempt returned provider HTTP 429 while OpenAI billing showed $0 API credit. Fund API billing, then verify real extraction before treating it as accepted. The initial AI key was prepared with a 30-day expiry; the account owner should confirm its expiry and rotate it in time for continued use.
