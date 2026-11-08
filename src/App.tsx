@@ -10,6 +10,7 @@ import AiJobModal from './components/AiJobModal'
 import IntegrationsPage from './components/IntegrationsPage'
 import XeroJobPanel from './components/XeroJobPanel'
 import JobSheet from './components/JobSheet'
+import QuoteModal from './components/QuoteModal'
 import Overview from './components/Overview'
 import { jobNumber } from './lib/jobNumber'
 import { getSevenDaySchedule } from './lib/schedule'
@@ -183,7 +184,7 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
       <header className="topbar"><button className="icon-btn menu" onClick={()=>setMobileNav(!mobileNav)}>{mobileNav?<X/>:<Menu/>}</button><div><strong>Branded Flooring & Interiors Ltd</strong><span>{admin?'Admin portal':'Fitter portal'}</span></div></header>
       <div className="content">
         {loadError&&<div className="error" role="alert">{loadError}</div>}
-        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob}/>{admin&&<Overview jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}</>}
+        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob}/>{admin&&<Overview jobs={jobs} openJob={openJob} openPhotos={j=>{setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}</>}
         {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()} onAi={()=>setAiOpen(true)}/>}
 {page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
         {page==='sites'&&admin&&<SitesPage sites={sites} jobs={jobs} onRefresh={async()=>refresh()}/>}
@@ -415,6 +416,7 @@ function PaymentsPage({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
 
 function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],tab:Tab,setTab:(t:Tab)=>void,onBack:()=>void,onRefresh:()=>Promise<void>}){
  const [sheetOpen,setSheetOpen]=useState(false)
+ const [quoteOpen,setQuoteOpen]=useState(false)
  const archiveJob=async()=>{
   if(!supabase)return
   if(!window.confirm('Move this job to Completed?'))return
@@ -429,14 +431,16 @@ const tabs: {id:Tab,label:string,icon:any}[]=[
   {id:'variations',label:'Extras',icon:Plus},{id:'payments',label:'Payments',icon:CreditCard},{id:'checklist',label:'Checklist',icon:ClipboardCheck},{id:'signoff',label:'Sign-off',icon:CheckCircle2}
  ]
  return <>
+   {admin&&quoteOpen&&<QuoteModal job={job} onClose={()=>setQuoteOpen(false)}/>}
    <div className="job-head">
-  {sheetOpen&&<JobSheet job={job} onClose={()=>setSheetOpen(false)}/>}
+  {sheetOpen&&<JobSheet job={job} onClose={()=>setSheetOpen(false)} onQuote={admin?()=>{setSheetOpen(false);setQuoteOpen(true)}:undefined}/>}
   <button className="button secondary print-hide" onClick={()=>setSheetOpen(true)}>Installation job sheet</button>
   <button className="button secondary" onClick={onBack}>← {admin?'Jobs':'My Jobs'}</button>
   <div>
     <h1>{jobNumber(job)} <Status value={job.status}/></h1>
     <p>{job.customer}{job.site_name?' • '+job.site_name:''}{job.plot?' • Plot '+job.plot:''}</p>
   </div>
+  {admin&&<button className="button secondary print-hide" onClick={()=>setQuoteOpen(true)}>Create quote</button>}
   {admin&&<button className="button secondary print-hide" disabled={job.xero_number_pending} onClick={()=>window.print()}>Print completion pack</button>}
   {admin&&!job.archived&&<button className="button" onClick={archiveJob}>Move to Completed</button>}
 </div>
