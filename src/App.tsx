@@ -162,7 +162,7 @@ export default function App(){
   const filtered=jobs.filter(j=>!j.archived&&[j.job_number,j.customer,j.site_name,j.plot,j.po_number,j.flooring_type].join(' ').toLowerCase().includes(search.toLowerCase()))
 const completed=jobs.filter(j=>j.archived)
 const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invoice':'details');setPage('job')}
-  const nav=(p:Page)=>{setPage(p);setMobileNav(false)}
+  const nav=(p:Page)=>{setPage(p);setMobileNav(false);if(p==='integrations')void refresh().catch(console.error)}
 
   return <div className="shell">
     <aside className={mobileNav?'sidebar open':'sidebar'}>
