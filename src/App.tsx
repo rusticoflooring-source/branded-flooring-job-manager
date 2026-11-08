@@ -12,6 +12,7 @@ import XeroJobPanel from './components/XeroJobPanel'
 import JobSheet from './components/JobSheet'
 import QuoteModal from './components/QuoteModal'
 import Overview from './components/Overview'
+import AutoXeroSync from './components/AutoXeroSync'
 import { jobNumber } from './lib/jobNumber'
 import { getSevenDaySchedule } from './lib/schedule'
 
@@ -184,6 +185,7 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
       <header className="topbar"><button className="icon-btn menu" onClick={()=>setMobileNav(!mobileNav)}>{mobileNav?<X/>:<Menu/>}</button><div><strong>Branded Flooring & Interiors Ltd</strong><span>{admin?'Admin portal':'Fitter portal'}</span></div></header>
       <div className="content">
         {loadError&&<div className="error" role="alert">{loadError}</div>}
+        {admin&&<AutoXeroSync userId={profile.id} onRefresh={async()=>refresh()}/>}
         {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob}/>{admin&&<Overview jobs={jobs} openJob={openJob} openPhotos={j=>{setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}</>}
         {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()} onAi={()=>setAiOpen(true)}/>}
 {page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
@@ -192,7 +194,7 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
         {page==='payments'&&admin&&<PaymentsPage jobs={jobs} openJob={openJob}/>}
         {page==='integrations'&&admin&&<IntegrationsPage jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
         {aiOpen&&admin&&<AiJobModal sites={sites} profiles={profiles} onClose={()=>setAiOpen(false)} onCreated={async()=>refresh()}/>}
-        {page==='job'&&selected&&<JobPage job={selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
+        {page==='job'&&selected&&<JobPage job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
           onBack={()=>nav(selected.archived?'completed':'jobs')} onRefresh={async()=>{await refresh(); const {data}=await supabase!.rpc('bf_read_jobs',{p_job:selected.id}); if(data?.[0])setSelected(data[0])}}/>}
       </div>
     </main>
