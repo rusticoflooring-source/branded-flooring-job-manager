@@ -35,8 +35,33 @@ input,select,textarea{width:100%;border:1px solid #ccd3da;border-radius:8px;padd
 @media print{body:has(.job-sheet-modal) #root{display:none!important}.job-sheet-modal{position:static;padding:0;background:#fff;overflow:visible}.job-sheet{max-width:none;margin:0;padding:0;box-shadow:none}.job-sheet section,.sheet-fields>div{break-inside:avoid}.job-sheet-modal .print-hide{display:none!important}}
 
 .job-head{flex-wrap:wrap}
-.overview{margin-top:24px}.overview table{min-width:1250px}.overview td{vertical-align:top}.overview td small{display:block;margin-top:6px}.overview input[type=checkbox]{width:20px;height:20px;accent-color:#111827}.overview-notes{min-width:220px;max-width:340px;white-space:pre-wrap;overflow-wrap:anywhere}.overview .panel-head{flex-wrap:wrap;gap:16px}
+.overview{margin-top:24px}.overview table{min-width:0;table-layout:fixed}.overview td{vertical-align:top}.overview td small{display:block;margin-top:6px}.overview input[type=checkbox]{width:20px;height:20px;accent-color:#111827}.overview-notes{min-width:0;max-width:none;white-space:pre-wrap;overflow-wrap:anywhere}.overview .panel-head{flex-wrap:wrap;gap:16px}
 
 .overview .snag-complete { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 .overview .snag-alert { color:#b91c1c; }
 .overview button.snag-alert { border-color:#b91c1c; background:#fef2f2; }
+
+/* Keep the complete overview and its actions inside the available screen. */
+.overview .table-wrap{overflow:visible;max-width:100%}
+.overview th,.overview td{padding:10px 5px;overflow-wrap:anywhere}
+.overview th{font-size:10px;letter-spacing:0;text-transform:none}
+.overview td{font-size:12px}
+.overview th:nth-child(1){width:11%}.overview th:nth-child(2){width:8%}.overview th:nth-child(3){width:9%}
+.overview th:nth-child(4){width:5%}.overview th:nth-child(5),.overview th:nth-child(6){width:6%}
+.overview th:nth-child(7){width:11%}.overview th:nth-child(8),.overview th:nth-child(9){width:7%}
+.overview th:nth-child(10){width:5%}.overview th:nth-child(11){width:11%}.overview th:nth-child(12){width:14%}
+.overview .button{max-width:100%;white-space:normal;overflow-wrap:anywhere;padding:7px 6px}
+.overview-actions .button{display:flex;width:100%;margin-bottom:8px}
+.overview .snag-complete{flex-wrap:wrap}
+.overview .panel-head>label{max-width:100%;min-width:0}
+@media(max-width:1150px){
+ .overview table,.overview tbody{display:block;width:100%}
+ .overview thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .overview tbody>tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+ .overview td{display:block;border:0;padding:0;min-width:0;font-size:13px}
+ .overview td[data-label]::before{content:attr(data-label);display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:capitalize}
+ .overview .overview-notes,.overview .overview-actions{grid-column:1/-1}
+ .overview .overview-actions{display:flex;flex-wrap:wrap;gap:8px}
+ .overview .overview-actions::before{width:100%}
+ .overview-actions .button{width:auto;flex:1 1 120px;margin:0;padding:9px 12px}
+}
