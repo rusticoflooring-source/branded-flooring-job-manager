@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf'
-export type QuoteInput={reference:string;date:string;customer:string;email:string;site:string;description:string;amount:number;vat:number;terms:string;logo:string;customerAddress?:string;contact?:string;details?:{label:string;value:string}[]}
+export type QuoteInput={reference:string;date:string;customer:string;email:string;site:string;description:string;amount:number;vat:number;reverseCharge?:boolean;terms:string;logo:string;customerAddress?:string;contact?:string;details?:{label:string;value:string}[]}
 export const quoteMoney=(value:number)=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(value)
 export const quoteMessage='Hi,\n\nPlease find our attached quote. If you have any queries, please don’t hesitate to get in touch.\n\nKind regards,\nSteve\nBranded Flooring & Interiors Ltd'
 export function createQuotePdf(q:QuoteInput){
@@ -12,8 +12,9 @@ export function createQuotePdf(q:QuoteInput){
  header();paragraph('FLOORING QUOTATION',13,true,blue);paragraph(`Prepared for: ${q.customer}`);if(q.email)paragraph(q.email,9);if(q.contact?.trim())paragraph(`Contact: ${q.contact}`,9);if(q.customerAddress?.trim())paragraph(`Customer address: ${q.customerAddress}`,9);if(q.site)paragraph(`Site / plot: ${q.site}`,9);for(const detail of q.details||[]){if(detail.value.trim())paragraph(`${detail.label}: ${detail.value}`,9)}y+=4;space(22);doc.setFillColor(pale);doc.rect(14,y-4,182,9,'F');text('DESCRIPTION',17,y+2,9,true,blue);text('PRICE EXCL. VAT',193,y+2,9,true,blue,'right');y+=14
  // Long descriptions continue across pages without splitting totals or footer.
  paragraph(q.description);space(12);text(quoteMoney(q.amount),193,y,10,false,ink,'right');y+=6;rule(y);y+=15
- space(43);const tax=Math.round(q.amount*q.vat)/100,total=Math.round((q.amount+tax)*100)/100
- text('Subtotal excluding VAT',104,y,10);text(quoteMoney(q.amount),193,y,10,false,ink,'right');y+=9;text(`VAT at ${q.vat}%`,104,y,10);text(quoteMoney(tax),193,y,10,false,ink,'right');y+=8;doc.setFillColor(pale);doc.rect(102,y-3,94,12,'F');text('TOTAL INCLUDING VAT',105,y+4,10,true,blue);text(quoteMoney(total),193,y+4,11,true,blue,'right');y+=22
+ space(43);const reverseVat=Math.round(q.amount*q.vat)/100,tax=q.reverseCharge?0:reverseVat,total=Math.round((q.amount+tax)*100)/100
+ text('Subtotal excluding VAT',104,y,10);text(quoteMoney(q.amount),193,y,10,false,ink,'right');y+=9;text(q.reverseCharge?'VAT charged (reverse charge)':q.vat===0?'Zero-rated VAT (0%)':`VAT at ${q.vat}%`,104,y,10);text(quoteMoney(tax),193,y,10,false,ink,'right');y+=8;doc.setFillColor(pale);doc.rect(102,y-3,94,12,'F');text(q.reverseCharge?'TOTAL PAYABLE':'TOTAL INCLUDING VAT',105,y+4,10,true,blue);text(quoteMoney(total),193,y+4,11,true,blue,'right');y+=22
+ if(q.reverseCharge){paragraph('Domestic reverse charge applies (20%). Customer to account for VAT to HMRC.',9,true,blue);paragraph(`VAT to be accounted for by the customer: ${quoteMoney(reverseVat)}. This is not included in the total payable.`,9)}
  if(q.terms.trim()){paragraph('Terms / exclusions',10,true,blue);paragraph(q.terms,9)}
  const count=doc.getNumberOfPages();for(let i=1;i<=count;i++){doc.setPage(i);text('Please contact us to accept this quotation or discuss any changes.',14,274,8,false,'#667780');rule(278);text('Company registration: 12073839  |  VAT registration: 328805977',14,284,7,false,'#667780');text(`Page ${i} of ${count}`,196,284,7,false,'#667780','right')}
  return doc
