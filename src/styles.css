@@ -35,3 +35,4 @@ input,select,textarea{width:100%;border:1px solid #ccd3da;border-radius:8px;padd
 @media print{body:has(.job-sheet-modal) #root{display:none!important}.job-sheet-modal{position:static;padding:0;background:#fff;overflow:visible}.job-sheet{max-width:none;margin:0;padding:0;box-shadow:none}.job-sheet section,.sheet-fields>div{break-inside:avoid}.job-sheet-modal .print-hide{display:none!important}}
 
 .job-head{flex-wrap:wrap}
+.overview{margin-top:24px}.overview table{min-width:1250px}.overview td{vertical-align:top}.overview td small{display:block;margin-top:6px}.overview input[type=checkbox]{width:20px;height:20px;accent-color:#111827}.overview-notes{min-width:220px;max-width:340px;white-space:pre-wrap;overflow-wrap:anywhere}.overview .panel-head{flex-wrap:wrap;gap:16px}

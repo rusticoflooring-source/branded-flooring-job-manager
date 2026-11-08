@@ -10,7 +10,7 @@ async function attachment(file:File){return new Promise<{name:string,data:string
 export default function AiJobModal({sites,profiles,onClose,onCreated}:{sites:Site[],profiles:Profile[],onClose:()=>void,onCreated:()=>Promise<void>}){
  const [text,setText]=useState(''),[files,setFiles]=useState<File[]>([]),[drafts,setDrafts]=useState<Draft[]>([]),[warnings,setWarnings]=useState<string[]>([]),[index,setIndex]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reviewed,setReviewed]=useState(false),[listening,setListening]=useState(false)
  const [useXeroNumber,setUseXeroNumber]=useState(true),[savedJobs,setSavedJobs]=useState<Record<string,Job>>({})
- const loadSavedJob=async(id:string)=>{const {data,error}=await supabase!.from('jobs').select('*, sites(name)').eq('id',id).single();if(error)throw new Error('The job is saved. Open it from Jobs to finish the Xero draft.');setSavedJobs(js=>({...js,[id]:{...data,site_name:(data as any).sites?.name||''}}))}
+ const loadSavedJob=async(id:string)=>{const {data,error}=await supabase!.rpc('bf_read_jobs',{p_job:id});if(error)throw new Error('The job is saved. Open it from Jobs to finish the Xero draft.');setSavedJobs(js=>({...js,[id]:data[0]}))}
  const speech=useRef<any>(null),dialog=useRef<HTMLDivElement>(null)
  useEffect(()=>{const previous=document.activeElement as HTMLElement|null;dialog.current?.focus();return()=>{speech.current?.abort();previous?.focus()}},[])
  const draft=drafts[index]

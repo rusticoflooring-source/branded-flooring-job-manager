@@ -39,6 +39,7 @@ archived: boolean
   extras_value: number
   invoiced_value: number
   paid_value: number
+  fitting_cost?: number | null
   fitter_payment_due: number
   fitter_payment_status: 'Due' | 'Approved' | 'Paid'
   created_at: string
@@ -77,5 +78,6 @@ export interface JobFile {
 export interface Assignment {
   job_id: string
   fitter_id: string
+  fitting_cost?: number | null
   fitter_name?: string
 }
