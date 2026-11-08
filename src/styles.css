@@ -36,3 +36,7 @@ input,select,textarea{width:100%;border:1px solid #ccd3da;border-radius:8px;padd
 
 .job-head{flex-wrap:wrap}
 .overview{margin-top:24px}.overview table{min-width:1250px}.overview td{vertical-align:top}.overview td small{display:block;margin-top:6px}.overview input[type=checkbox]{width:20px;height:20px;accent-color:#111827}.overview-notes{min-width:220px;max-width:340px;white-space:pre-wrap;overflow-wrap:anywhere}.overview .panel-head{flex-wrap:wrap;gap:16px}
+
+.overview .snag-complete { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.overview .snag-alert { color:#b91c1c; }
+.overview button.snag-alert { border-color:#b91c1c; background:#fef2f2; }
