@@ -1,0 +1,2 @@
+import { supabase } from './supabase'
+export async function saveTracking(values:Record<string,unknown>,revision?:number){const query=revision==null?supabase!.from('job_admin_tracking').insert(values):supabase!.from('job_admin_tracking').update(values).eq('job_id',values.job_id).eq('revision',revision);const {data,error}=await query.select('*').single();if(error)throw new Error('Tracking could not save or changed elsewhere. Refresh and retry.');return data}

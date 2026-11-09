@@ -31,6 +31,7 @@ archived: boolean
   flooring_type: string
   status: JobStatus
   install_date: string | null
+  install_end_date?: string | null
   due_date: string | null
   address: string | null
   access_notes: string | null

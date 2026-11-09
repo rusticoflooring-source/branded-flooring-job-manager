@@ -21,6 +21,7 @@ export default function QuoteModal({job,onClose,saved,initial,onSaved}:{job:Job;
   {label:'Product specification',value:job.product_spec||''},
   {label:'Quantity',value:job.quantity!=null?`${job.quantity} ${job.quantity_unit||''}`:''},
   {label:'Proposed installation date',value:job.install_date?new Date(job.install_date+'T12:00:00').toLocaleDateString('en-GB'):''},
+  {label:'Final installation day',value:job.install_end_date?new Date(job.install_end_date+'T12:00:00').toLocaleDateString('en-GB'):''},
   {label:'Site access',value:job.access_notes||''},
   {label:'Installation scope / instructions',value:job.instructions||''}
  ])

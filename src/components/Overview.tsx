@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import { saveTracking } from '../lib/tracking'
 import { supabase } from '../lib/supabase'
 import { jobNumber } from '../lib/jobNumber'
 import { overviewInvoice, type InvoiceSnapshot } from '../lib/invoiceStatus'
 import QuoteModal from './QuoteModal'
 import type { Job } from '../types'
-type Tracking={job_id:string;materials_ordered:boolean;po_received:boolean;install_complete:boolean;snagging_outstanding:boolean;issues_notes:string}
+type Tracking={job_id:string;materials_ordered:boolean;po_received:boolean;install_complete:boolean;snagging_outstanding:boolean;issues_notes:string;revision?:number}
 const blank=(id:string):Tracking=>({job_id:id,materials_ordered:false,po_received:false,install_complete:false,snagging_outstanding:false,issues_notes:''})
 const money=(value:number)=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(value||0)
 export default function Overview({jobs,invoices,invoiceError,openInvoice,openJob,openPhotos,onRefresh}:{jobs:Job[];openInvoice:(job:Job)=>void;invoices:InvoiceSnapshot[];invoiceError:string;openJob:(job:Job)=>void;openPhotos:(job:Job)=>void;onRefresh:()=>Promise<void>}){
@@ -12,7 +13,7 @@ export default function Overview({jobs,invoices,invoiceError,openInvoice,openJob
  const [quoteJob,setQuoteJob]=useState<Job|null>(null)
  const [rows,setRows]=useState<Record<string,Tracking>>({}),[query,setQuery]=useState(''),[error,setError]=useState(''),[saving,setSaving]=useState<string|null>(null),[editing,setEditing]=useState<Tracking|null>(null),[ready,setReady]=useState(false)
  useEffect(()=>{let live=true;supabase!.from('job_admin_tracking').select('*').then(({data,error})=>{if(!live)return;if(error){setError('The overview database update needs applying before tracking can be saved.');return}setRows(Object.fromEntries((data||[]).map(r=>[r.job_id,r])));setReady(true)});return()=>{live=false}},[jobs])
- const save=async(row:Tracking)=>{setSaving(row.job_id);setError('');try{const {error}=await supabase!.from('job_admin_tracking').upsert(row,{onConflict:'job_id'});if(error)throw error;setRows(r=>({...r,[row.job_id]:row}));setEditing(null);await onRefresh()}catch{setError('Could not save the overview. Your previous values are unchanged; please retry.')}finally{setSaving(null)}}
+ const save=async(row:Tracking)=>{setSaving(row.job_id);setError('');try{const {job_id,materials_ordered,po_received,install_complete,snagging_outstanding,issues_notes}=row;const saved=await saveTracking({job_id,materials_ordered,po_received,install_complete,snagging_outstanding,issues_notes},row.revision);setRows(r=>({...r,[row.job_id]:saved}));setEditing(null);await onRefresh()}catch{setError('Could not save the overview. Your previous values are unchanged; please retry.')}finally{setSaving(null)}}
  const matchesFilter=(j:Job)=>{const row=rows[j.id]||blank(j.id);const installed=row.install_complete||['Install Complete','Complete','Invoiced','Fitter Paid','Payment Received'].includes(j.status);switch(filter){case 'materials':return !row.materials_ordered&&!installed;case 'po':return !row.po_received;case 'snags':return row.snagging_outstanding||j.status==='Snag';case 'unscheduled':return !j.install_date&&!installed;case 'unpaid':return Number(j.invoiced_value)>Number(j.paid_value);default:return true}}
  const visible=jobs.filter(j=>!j.archived&&matchesFilter(j)&&[j.job_number,j.customer,j.site_name,j.plot,j.po_number,rows[j.id]?.issues_notes].join(' ').toLowerCase().includes(query.toLowerCase()))
  return <section className="panel overview"><div className="panel-head"><div><h1>Job overview</h1><p>Track purchase orders, materials, installation, snags and payments. Admin only.</p></div><label>Search overview<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Job, site, plot or issue"/></label></div>{invoiceError&&<div className="error" role="alert">{invoiceError}</div>}{error&&<div className="error" role="alert">{error}</div>}
