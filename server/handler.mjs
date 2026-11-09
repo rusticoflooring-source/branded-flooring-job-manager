@@ -1,4 +1,5 @@
 import { HttpError, env, equal, rawBody, json, checkOrigin, requireAdmin, limited, db } from './core.mjs';
+import { planReport, exportReport } from './reports.mjs';
 import { extractJobs, saveReviewedJob } from './ai.mjs';
 import { xeroStatus, startConnection, finishConnection, selectTenant, invoiceOptions, createDraft, syncInvoices, receiveWebhook, resetPending } from './xero.mjs';
 export async function handler(req,res){
@@ -20,6 +21,8 @@ export async function handler(req,res){
   }
   if(!(req.headers['content-type']||'').startsWith('application/json'))throw new HttpError(415,'JSON input is required.');
   let body;try{body=JSON.parse((await rawBody(req)).toString('utf8')||'{}');}catch(error){if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid input.');}
+  if(route==='ai/report-plan')return json(res,200,await planReport(body,user));
+  if(route==='ai/report-export')return json(res,200,await exportReport(body,user));
   if(route==='ai/extract')return json(res,200,await extractJobs(body,user));
   if(route==='ai/save')return json(res,200,await saveReviewedJob(body,user));
   if(route==='xero/connect')return json(res,200,await startConnection(user,res,req.headers.origin));
