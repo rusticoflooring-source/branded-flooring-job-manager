@@ -1,4 +1,5 @@
 import { HttpError, env, equal, rawBody, json, checkOrigin, requireAdmin, limited, db } from './core.mjs';
+import { findExistingInvoice, linkExistingInvoice } from './xeroLink.mjs';
 import { planReport, exportReport } from './reports.mjs';
 import { extractJobs, saveReviewedJob } from './ai.mjs';
 import { xeroStatus, startConnection, finishConnection, selectTenant, invoiceOptions, createDraft, syncInvoices, receiveWebhook, resetPending } from './xero.mjs';
@@ -27,6 +28,8 @@ export async function handler(req,res){
   if(route==='ai/save')return json(res,200,await saveReviewedJob(body,user));
   if(route==='xero/connect')return json(res,200,await startConnection(user,res,req.headers.origin));
   if(route==='xero/select-tenant')return json(res,200,await selectTenant(body.tenant_id));
+  if(route==='xero/find-existing'){await limited(user.id,'xero-existing-search',60);return json(res,200,await findExistingInvoice(body,user));}
+  if(route==='xero/link-existing'){await limited(user.id,'xero-existing-link',30);return json(res,200,await linkExistingInvoice(body,user));}
   if(route==='xero/draft'){await limited(user.id,'xero-draft',60);return json(res,200,await createDraft(body,user));}
   if(route==='xero/reset-pending')return json(res,200,await resetPending(body));
   if(route==='xero/sync'){await limited(user.id,'xero-sync',30);return json(res,200,await syncInvoices());}
