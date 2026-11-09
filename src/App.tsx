@@ -13,6 +13,7 @@ import JobSheet from './components/JobSheet'
 import QuoteModal from './components/QuoteModal'
 import Overview from './components/Overview'
 import AutoXeroSync from './components/AutoXeroSync'
+import { fitterSafeText, fitterText } from './lib/fitterPrivacy'
 import { jobNumber } from './lib/jobNumber'
 import { getSevenDaySchedule } from './lib/schedule'
 
@@ -133,7 +134,7 @@ export default function App(){
       supabase.from('sites').select('*').order('name'),
       role==='admin'?supabase.from('profiles').select('*').order('full_name'):Promise.resolve({data:[],error:null} as any)
     ])
-    if(j.error)setLoadError('Could not load jobs. Please refresh or check that the database update has been applied.');else {setLoadError('');setJobs((j.data||[]).map((x:any)=>({...x,site_name:x.site_name||''})))}
+    if(j.error)setLoadError('Could not load jobs. Please refresh or check that the database update has been applied.');else {setLoadError('');setJobs((j.data||[]).map((x:any)=>{const record={...x,site_name:x.site_name||''};if(role!=='admin'){for(const key of ['contract_value','extras_value','invoiced_value','paid_value','fitter_payment_due'])delete record[key];for(const key of Object.keys(record))if(typeof record[key]==='string')record[key]=fitterText(record[key])}return record}))}
     if(!s.error)setSites(s.data||[])
     if(!p.error)setProfiles(p.data||[])
   }
@@ -447,7 +448,7 @@ const tabs: {id:Tab,label:string,icon:any}[]=[
   {admin&&!job.archived&&<button className="button" onClick={archiveJob}>Move to Completed</button>}
 </div>
    {admin&&job.xero_number_managed&&['Install Complete','Complete'].includes(job.status)&&<div className="review-notice"><strong>Installation complete — review the existing Xero invoice</strong><p>Check final quantities and variations, then approve and send that same invoice in Xero.</p><button className="button secondary" onClick={()=>setTab('invoice')}>Review linked invoice</button></div>}
-   {!admin&&<><section className="panel"><strong>Your fitting cost: {job.fitting_cost==null?'Not set':money(job.fitting_cost)}</strong><p>Payment status: {job.fitter_payment_status}</p></section><FitterJobActions job={job} onRefresh={onRefresh}/></>}
+   {!admin&&<><section className="panel"><strong>Your fitting wage: {job.fitting_cost==null?'Not set':money(job.fitting_cost)}</strong><p>Payment status: {job.fitter_payment_status}</p></section><FitterJobActions job={job} onRefresh={onRefresh}/></>}
    <div className="tabs">{tabs.filter(x=>admin||(x.id!=='payments'&&x.id!=='invoice')).map(x=><button key={x.id} className={tab===x.id?'active':''} onClick={()=>setTab(x.id)}><x.icon size={16}/>{x.label}</button>)}</div>
    {tab==='details'&&<DetailsTab job={job} admin={admin} profiles={profiles} sites={sites} onRefresh={onRefresh}/>}
    {tab==='notes'&&<NotesTab job={job} admin={admin}/>}
@@ -557,8 +558,8 @@ const unassign=async(fitterId:string)=>{
 }
 
 function NotesTab({job,admin}:{job:Job,admin:boolean}){
- const [notes,setNotes]=useState<Note[]>([]),[body,setBody]=useState(''),[visibility,setVisibility]=useState<'team'|'internal'>('team')
- const load=()=>supabase!.from('job_notes').select('*').eq('job_id',job.id).order('created_at',{ascending:false}).then(({data})=>setNotes(data||[]))
+ const [notes,setNotes]=useState<Note[]>([]),[body,setBody]=useState(''),[visibility,setVisibility]=useState<'team'|'internal'>(admin?'internal':'team')
+ const load=()=>supabase!.from('job_notes').select('*').eq('job_id',job.id).order('created_at',{ascending:false}).then(({data})=>setNotes((data||[]).filter(n=>admin||(n.visibility==='team'&&fitterSafeText(n.body)))))
  useEffect(()=>{load()},[job.id])
  const deleteNote=async(id:string)=>{
   if(!admin)return
@@ -577,8 +578,8 @@ function NotesTab({job,admin}:{job:Job,admin:boolean}){
 
   load()
 }
-const add=async()=>{if(!body.trim())return;await supabase!.from('job_notes').insert({job_id:job.id,body,visibility:admin?visibility:'team'});setBody('');load()}
- return <section className="panel"><div className="form-grid"><label className="span2">Add job note<textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Site update, issue, instruction, access note…"/></label>{admin&&<label>Visibility<select value={visibility} onChange={e=>setVisibility(e.target.value as any)}><option value="team">Team</option><option value="internal">Internal only</option></select></label>}</div><button className="button" onClick={add}>Add note</button>
+const add=async()=>{if(!body.trim())return;if((!admin||visibility==='team')&&!fitterSafeText(body)){alert('Customer pricing and financial information must stay internal. Use the assigned fitting cost for wages, or a standalone note labelled Fitters wage or Fitters money.');return;}await supabase!.from('job_notes').insert({job_id:job.id,body,visibility:admin?visibility:'team'});setBody('');load()}
+ return <section className="panel"><div className="form-grid"><label className="span2">Add job note<textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Site update, issue, instruction, access note…"/></label>{admin&&<label>Visibility<select value={visibility} onChange={e=>setVisibility(e.target.value as any)}><option value="team">Share with fitters — no customer pricing</option><option value="internal">Admin only (default)</option></select></label>}</div><button className="button" onClick={add}>Add note</button>
  <div className="timeline">{notes.map(n=><article key={n.id}><span>{new Date(n.created_at).toLocaleString('en-GB')}</span><p>{n.body}</p><small>{n.visibility==='internal'?'Internal only':'Visible to assigned team'}</small>
 {admin&&<button
   type="button"
@@ -591,7 +592,7 @@ const add=async()=>{if(!body.trim())return;await supabase!.from('job_notes').ins
 
 function PhotosTab({job,admin}:{job:Job,admin:boolean}){
  const [files,setFiles]=useState<JobFile[]>([]),[category,setCategory]=useState('Before Installation'),[note,setNote]=useState(''),[busy,setBusy]=useState(false)
- const load=()=>supabase!.from('job_files').select('*').eq('job_id',job.id).order('created_at',{ascending:false}).then(({data})=>setFiles(data||[]))
+ const load=()=>supabase!.from('job_files').select('*').eq('job_id',job.id).order('created_at',{ascending:false}).then(({data})=>setFiles((data||[]).filter(f=>admin||(f.fitter_shared===true&&fitterSafeText(f.note)&&fitterSafeText(f.file_name)))))
  useEffect(()=>{load()},[job.id])
  const upload=async(e:React.ChangeEvent<HTMLInputElement>)=>{
    const file=e.target.files?.[0];if(!file)return;setBusy(true)
@@ -642,7 +643,7 @@ return <section className="panel"><div className="upload-row"><label>Category<se
   }}
 >
   Delete photo
-</button>}</div></div>)}{!files.length&&<p className="empty">No photos or files uploaded yet.</p>}</div></section>
+</button>}{admin&&<button type="button" className="button small secondary" onClick={async()=>{if(!f.fitter_shared&&!window.confirm('Confirm this file contains no customer prices, invoices, quotes or internal financial information. Share it with assigned fitters?'))return;const {error}=await supabase!.from('job_files').update({fitter_shared:!f.fitter_shared}).eq('id',f.id);if(error){alert('Sharing needs the privacy database update applied first.');return}await load()}}>{f.fitter_shared?'Make private':'Review & share with fitters'}</button>}</div></div>)}{!files.length&&<p className="empty">No photos or files uploaded yet.</p>}</div></section>
 }
 
 function VariationsTab({job,admin,onRefresh}:{job:Job,admin:boolean,onRefresh:()=>Promise<void>}){
@@ -652,7 +653,7 @@ function VariationsTab({job,admin,onRefresh}:{job:Job,admin:boolean,onRefresh:()
  const add=async()=>{if(!description.trim())return;await supabase!.from('variations').insert({job_id:job.id,description,amount:Number(amount||0),status:'Pending'});setDescription('');setAmount('0');load()}
  const status=async(id:string,s:string)=>{await supabase!.from('variations').update({status:s}).eq('id',id);load();await onRefresh()}
  return <section className="panel"><div className="form-grid"><label className="span2">Extra work / variation<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="e.g. Additional latex required due to subfloor condition"/></label>{admin&&<label>Value (£)<input type="number" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)}/></label>}</div><button className="button" onClick={add}>Report extra work</button>
- <div className="timeline">{items.map(v=><article key={v.id}><span>{new Date(v.created_at).toLocaleString('en-GB')}</span><p><strong>{v.description}</strong>{admin&&<> — {money(v.amount)}</>}</p><div className="row gap"><Status value={v.status}/>{admin&&v.status==='Pending'&&<><button className="button small" onClick={()=>status(v.id,'Approved')}>Approve</button><button className="button small secondary" onClick={()=>status(v.id,'Rejected')}>Reject</button></>}</div></article>)}{!items.length&&<p className="empty">No variations recorded.</p>}</div></section>
+ <div className="timeline">{items.map(v=><article key={v.id}><span>{new Date(v.created_at).toLocaleString('en-GB')}</span><p><strong>{admin?v.description:fitterText(v.description)}</strong>{admin&&<> — {money(v.amount)}</>}</p><div className="row gap"><Status value={v.status}/>{admin&&v.status==='Pending'&&<><button className="button small" onClick={()=>status(v.id,'Approved')}>Approve</button><button className="button small secondary" onClick={()=>status(v.id,'Rejected')}>Reject</button></>}</div></article>)}{!items.length&&<p className="empty">No variations recorded.</p>}</div></section>
 }
 
 function JobPayments({job,onRefresh}:{job:Job,onRefresh:()=>Promise<void>}){

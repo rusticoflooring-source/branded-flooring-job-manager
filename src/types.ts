@@ -66,6 +66,7 @@ export interface Variation {
 }
 
 export interface JobFile {
+  fitter_shared?: boolean
   id: string
   job_id: string
   category: string
