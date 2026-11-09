@@ -192,7 +192,7 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
       <div className="content">
         {loadError&&<div className="error" role="alert">{loadError}</div>}
         {admin&&<AutoXeroSync userId={profile.id} onRefresh={async()=>refresh()}/>}
-        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob}/>{admin&&<Overview invoices={invoices} invoiceError={invoiceError} jobs={jobs} openJob={openJob} openPhotos={j=>{setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}</>}
+        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob}/>{admin&&<Overview openInvoice={j=>{setSelected(j);setTab('invoice');setPage('job')}} invoices={invoices} invoiceError={invoiceError} jobs={jobs} openJob={openJob} openPhotos={j=>{setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}</>}
         {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()} onAi={()=>setAiOpen(true)}/>}
 {page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
         {page==='sites'&&admin&&<SitesPage sites={sites} jobs={jobs} onRefresh={async()=>refresh()}/>}
@@ -435,7 +435,7 @@ function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job
 }
 
 const tabs: {id:Tab,label:string,icon:any}[]=[
-  {id:'details',label:'Details',icon:FileText},{id:'invoice',label:'Xero draft',icon:CreditCard},{id:'notes',label:'Notes',icon:FileText},{id:'photos',label:'Photos',icon:Camera},
+  {id:'details',label:'Details',icon:FileText},{id:'invoice',label:'Xero invoice',icon:CreditCard},{id:'notes',label:'Notes',icon:FileText},{id:'photos',label:'Photos',icon:Camera},
   {id:'variations',label:'Extras',icon:Plus},{id:'payments',label:'Payments',icon:CreditCard},{id:'checklist',label:'Checklist',icon:ClipboardCheck},{id:'signoff',label:'Sign-off',icon:CheckCircle2}
  ]
  return <>
