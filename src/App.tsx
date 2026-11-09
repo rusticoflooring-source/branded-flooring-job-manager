@@ -6,11 +6,13 @@ import {
 import { configured, supabase } from './lib/supabase'
 import type { Assignment, Job, JobFile, Note, Profile, Site, Variation } from './types'
 import SignaturePad from './components/SignaturePad'
+import OfficeAssistant from './components/OfficeAssistant'
 import AiJobModal from './components/AiJobModal'
 import IntegrationsPage from './components/IntegrationsPage'
 import XeroJobPanel from './components/XeroJobPanel'
 import JobSheet from './components/JobSheet'
 import QuoteModal from './components/QuoteModal'
+import QuotesPage from './components/QuotesPage'
 import Overview from './components/Overview'
 import AutoXeroSync from './components/AutoXeroSync'
 import { invoiceColumns, type InvoiceSnapshot } from './lib/invoiceStatus'
@@ -94,7 +96,7 @@ export default function App(){
   const [loadError,setLoadError]=useState('')
   const [page,setPage]=useState<Page>(new URLSearchParams(window.location.search).has('xero')?'integrations':'dashboard')
   const [aiOpen,setAiOpen]=useState(false)
-  const [quoteJob,setQuoteJob]=useState<Job|null>(null)
+  const [assistantOpen,setAssistantOpen]=useState(false)
   const [tab,setTab]=useState<Tab>('details')
   const [jobs,setJobs]=useState<Job[]>([])
   const [invoices,setInvoices]=useState<InvoiceSnapshot[]>([])
@@ -183,20 +185,19 @@ const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);s
           <NavButton icon={<FileText/>} label="Quotes" active={page==='quotes'} onClick={()=>nav('quotes')}/>
           <NavButton icon={<Wallet/>} label="Money" active={['integrations','payments'].includes(page)} onClick={()=>nav('integrations')}/>
           <NavButton icon={<BriefcaseBusiness/>} label="Business" active={['business','sites','fitters'].includes(page)} onClick={()=>nav('business')}/>
-          <NavButton icon={<Plus/>} label="Create with AI" active={aiOpen} onClick={()=>{setAiOpen(true);setMobileNav(false)}}/>
+          <NavButton icon={<Plus/>} label="AI assistant" active={assistantOpen} onClick={()=>{setAssistantOpen(true);setMobileNav(false)}}/>
         </>}
       </nav>
       <div className="sidebar-footer"><div><strong>{profile.full_name}</strong><small>{profile.role==='admin'?'Administrator':'Fitter account'}</small></div><button className="icon-btn" title="Sign out" onClick={()=>supabase!.auth.signOut()}><LogOut size={18}/></button></div>
     </aside>
     {mobileNav&&<div className="backdrop" onClick={()=>setMobileNav(false)}/>}
     <main className="main">
-      <header className="topbar"><button className="icon-btn menu" onClick={()=>setMobileNav(!mobileNav)}>{mobileNav?<X/>:<Menu/>}</button><div><strong>Branded Flooring & Interiors Ltd</strong><span>{admin?'Admin portal':'Fitter portal'}</span></div></header>
+      <header className="topbar"><button className="icon-btn menu" onClick={()=>setMobileNav(!mobileNav)}>{mobileNav?<X/>:<Menu/>}</button><div><strong>Branded Flooring & Interiors Ltd</strong><span>{admin?'Admin portal':'Fitter portal'}</span></div>{admin&&<button className="button small secondary assistant-launch" onClick={()=>setAssistantOpen(true)}>Ask AI</button>}</header>
       <div className="content">
         {admin&&['jobs','overview','completed'].includes(page)&&<nav className="section-switcher" aria-label="Job views">{([['jobs','Active jobs'],['overview','Job overview'],['completed','Completed']] as [Page,string][]).map(([key,label])=><button key={key} aria-current={page===key?'page':undefined} className={page===key?'button':'button secondary'} onClick={()=>nav(key)}>{label}</button>)}</nav>}
         {admin&&['integrations','payments'].includes(page)&&<nav className="section-switcher" aria-label="Money views"><button className={page==='integrations'?'button':'button secondary'} onClick={()=>nav('integrations')}>Invoices & Xero</button><button className={page==='payments'?'button':'button secondary'} onClick={()=>nav('payments')}>Fitter payments</button></nav>}
         {page==='business'&&admin&&<><div className="page-title"><div><h1>Business</h1><p>Your people, sites and company tools.</p></div></div><div className="business-grid">{([{page:'sites',title:'Sites & plots',description:`${sites.length} sites · developers, addresses and plot records`,icon:<Building2/>},{page:'fitters',title:'Fitters',description:`${profiles.filter(p=>p.role==='fitter'&&p.active).length} active fitters · team and account details`,icon:<Users/>},{page:'completed',title:'Completed work',description:`${completed.length} archived jobs · retain photos and signatures`,icon:<CheckCircle2/>},{page:'integrations',title:'Connections & reports',description:'Xero connection, invoice reconciliation and AI reports',icon:<CreditCard/>}] as const).map(item=><button className="panel business-tile" key={item.page} onClick={()=>nav(item.page)}>{item.icon}<strong>{item.title}</strong><span>{item.description}</span><span aria-hidden="true">Open →</span></button>)}</div></>}
-        {page==='quotes'&&admin&&<QuotesPage jobs={jobs} onQuote={setQuoteJob} openJob={openJob} onNew={()=>nav('jobs')}/>}
-        {quoteJob&&admin&&<QuoteModal job={quoteJob} onClose={()=>setQuoteJob(null)}/>}
+        {page==='quotes'&&admin&&<QuotesPage jobs={jobs} openJob={openJob} onNew={()=>nav('jobs')}/>}
 
         {loadError&&<div className="error" role="alert">{loadError}</div>}
         {admin&&<AutoXeroSync userId={profile.id} onRefresh={async()=>refresh()}/>}
@@ -208,6 +209,7 @@ const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);s
         {page==='fitters'&&admin&&<FittersPage profiles={profiles}/>}
         {page==='payments'&&admin&&<PaymentsPage jobs={jobs} openJob={openJob}/>}
         {page==='integrations'&&admin&&<IntegrationsPage invoices={invoices} setInvoices={setInvoices} jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
+        {assistantOpen&&admin&&<OfficeAssistant jobs={jobs} openJob={openJob} onClose={()=>setAssistantOpen(false)} onCreate={()=>{setAssistantOpen(false);setAiOpen(true)}}/>}
         {aiOpen&&admin&&<AiJobModal sites={sites} profiles={profiles} onClose={()=>setAiOpen(false)} onCreated={async()=>refresh()}/>}
         {page==='job'&&selected&&<JobPage backLabel={returnPage==='overview'?'Job Overview':returnPage==='dashboard'?(admin?'Home':'My Jobs'):returnPage==='quotes'?'Quotes':returnPage==='business'?'Business':returnPage==='integrations'?'Money':returnPage==='payments'?'Payments':returnPage==='completed'?'Completed':'Jobs'} job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
           onBack={()=>nav(returnPage)} onRefresh={async()=>{await refresh(); const {data}=await supabase!.rpc('bf_read_jobs',{p_job:selected.id}); if(data?.[0])setSelected(data[0])}}/>}
@@ -219,12 +221,6 @@ const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);s
       </nav>
     </main>
   </div>
-}
-
-function QuotesPage({jobs,onQuote,openJob,onNew}:{jobs:Job[];onQuote:(job:Job)=>void;openJob:(job:Job)=>void;onNew:()=>void}){
- const [query,setQuery]=useState('')
- const matches=jobs.filter(j=>!j.archived&&[j.job_number,j.customer,j.site_name,j.plot].join(' ').toLowerCase().includes(query.toLowerCase()))
- return <><div className="page-title"><div><h1>Quotes</h1><p>Prepare a branded quotation using the details already on your job.</p></div><button className="button" onClick={onNew}><Plus size={17}/>Add a job to quote</button></div><section className="panel"><p>Choose a job, review its scope, price and VAT, then download or share the quotation. Quotes use your existing job records; sent and accepted quote tracking is not yet available.</p><label>Find a job<input type="search" placeholder="Job number, customer, site or plot" value={query} onChange={e=>setQuery(e.target.value)}/></label></section><div className="quote-job-list">{matches.map(j=><article className="panel quote-job" key={j.id}><div><span className="eyebrow">{jobNumber(j)}</span><h2>{j.customer}</h2><p>{j.site_name||'Private / direct'}{j.plot?` · Plot ${j.plot}`:''} · {j.flooring_type}</p><Status value={j.status}/></div><div className="row gap wrap"><button className="button secondary" onClick={()=>openJob(j)}>Open job</button><button className="button" onClick={()=>onQuote(j)}>Prepare quote</button></div></article>)}{!matches.length&&<section className="panel empty">{query?'No jobs match your search.':'Add a job to prepare your first quotation.'}</section>}</div></>
 }
 
 function SetupScreen(){

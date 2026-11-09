@@ -1,0 +1,17 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {PGlite} from '@electric-sql/pglite';
+const admin='00000000-0000-0000-0000-000000000001',fitter='00000000-0000-0000-0000-000000000002',job='00000000-0000-0000-0000-000000000003';
+test('quotes enforce admin access, immutable issued prices, status flow, revision locks and audit history',async()=>{const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create schema auth;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;create table profiles(id uuid primary key,role text,active boolean);create table jobs(id uuid primary key);insert into profiles values('${admin}','admin',true),('${fitter}','fitter',true);insert into jobs values('${job}');create function is_admin() returns boolean language sql stable security definer as $$select exists(select 1 from profiles where id=auth.uid() and role='admin' and active)$$;`);
+ const migration=await readFile(new URL('../supabase/migrations/008_quotes.sql',import.meta.url),'utf8');await db.exec(migration);await db.exec(migration);
+ await db.exec(`set role authenticated;select set_config('request.jwt.claim.sub','${admin}',false)`);
+ const payload=JSON.stringify({customer:'Example',email:'',description:'LVT',contact:'',customerAddress:'',terms:'',details:[]});
+ const q=(await db.query(`insert into bf_quotes(job_id,reference,payload,net,vat_code) values($1,'Q-TEST',$2,100,'20') returning *`,[job,payload])).rows[0];assert.equal(q.revision,1);await assert.rejects(db.query(`update bf_quotes set payload='{}' where id=$1`,[q.id]),/Invalid quotation field/);
+ await assert.rejects(db.query(`update bf_quotes set status='Accepted' where id=$1`,[q.id]),/Invalid quotation status/);
+ await db.query(`update bf_quotes set net=120 where id=$1 and revision=1`,[q.id]);assert.equal((await db.query(`update bf_quotes set net=900 where id=$1 and revision=1 returning id`,[q.id])).rows.length,0);
+ await db.query(`update bf_quotes set status='Sent' where id=$1`,[q.id]);await assert.rejects(db.query(`update bf_quotes set net=500 where id=$1`,[q.id]),/new draft/);
+ await assert.rejects(db.query(`update bf_quotes set reference='changed' where id=$1`,[q.id]),/identity/);
+ await db.query(`update bf_quotes set status='Accepted' where id=$1`,[q.id]);await assert.rejects(db.query(`update bf_quotes set status='Draft' where id=$1`,[q.id]),/Invalid quotation/);
+ const events=(await db.query('select * from bf_quote_events order by id')).rows;assert.equal(events.length,4);assert.equal(events[0].snapshot.net,100);assert.equal(events[3].snapshot.net,120);await assert.rejects(db.query(`delete from bf_quote_events`),/permission denied/);
+ await db.exec(`select set_config('request.jwt.claim.sub','${fitter}',false)`);assert.equal((await db.query('select * from bf_quotes')).rows.length,0);assert.equal((await db.query('select * from bf_quote_events')).rows.length,0);await assert.rejects(db.query(`insert into bf_quotes(job_id,reference,payload,net,vat_code) values($1,'Q-FITTER',$2,100,'20')`,[job,payload]),/row-level security/);
+ await db.exec('set role anon');await assert.rejects(db.query('select * from bf_quotes'),/permission denied/);
+ }finally{await db.close()}});
