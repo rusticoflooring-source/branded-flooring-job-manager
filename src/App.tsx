@@ -6,6 +6,10 @@ import {
 import { configured, supabase } from './lib/supabase'
 import type { Assignment, Job, JobFile, Note, Profile, Site, Variation } from './types'
 import SignaturePad from './components/SignaturePad'
+import { ukToday } from './lib/operations'
+import VatPage, { VatDashboard } from './components/VatPage'
+import MaterialsPage from './components/MaterialsPage'
+import FitterDiary from './components/FitterDiary'
 import OfficeAssistant from './components/OfficeAssistant'
 import AiJobModal from './components/AiJobModal'
 import IntegrationsPage from './components/IntegrationsPage'
@@ -20,7 +24,7 @@ import { fitterSafeText, fitterText } from './lib/fitterPrivacy'
 import { jobNumber } from './lib/jobNumber'
 import { getSevenDaySchedule } from './lib/schedule'
 
-type Page='quotes'|'business'|'overview'|'dashboard'|'jobs'|'completed'|'sites'|'fitters'|'payments'|'job'|'integrations'
+type Page='vat'|'materials'|'diary'|'quotes'|'business'|'overview'|'dashboard'|'jobs'|'completed'|'sites'|'fitters'|'payments'|'job'|'integrations'
 type Tab='details'|'invoice'|'notes'|'photos'|'variations'|'payments'|'checklist'|'signoff'
 
 const checklistSets:Record<string,string[]>={
@@ -180,10 +184,10 @@ const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);s
       <div className="brand company-brand"><img src="/company-logo.png" alt="Branded Flooring & Interiors"/><small>Job Manager</small></div>
       <nav aria-label="Main navigation">
         <NavButton icon={<CalendarDays/>} label={admin?'Today':'My Jobs'} active={page==='dashboard'} onClick={()=>nav('dashboard')}/>
-        <NavButton icon={<ClipboardCheck/>} label="Jobs" active={['jobs','overview','completed','job'].includes(page)} onClick={()=>nav('jobs')}/>
+        <NavButton icon={<ClipboardCheck/>} label="Jobs" active={['jobs','overview','completed','job','materials','diary'].includes(page)} onClick={()=>nav('jobs')}/>
         {admin&&<>
           <NavButton icon={<FileText/>} label="Quotes" active={page==='quotes'} onClick={()=>nav('quotes')}/>
-          <NavButton icon={<Wallet/>} label="Money" active={['integrations','payments'].includes(page)} onClick={()=>nav('integrations')}/>
+          <NavButton icon={<Wallet/>} label="Money" active={['integrations','payments','vat'].includes(page)} onClick={()=>nav('integrations')}/>
           <NavButton icon={<BriefcaseBusiness/>} label="Business" active={['business','sites','fitters'].includes(page)} onClick={()=>nav('business')}/>
           <NavButton icon={<Plus/>} label="AI assistant" active={assistantOpen} onClick={()=>{setAssistantOpen(true);setMobileNav(false)}}/>
         </>}
@@ -194,14 +198,17 @@ const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);s
     <main className="main">
       <header className="topbar"><button className="icon-btn menu" onClick={()=>setMobileNav(!mobileNav)}>{mobileNav?<X/>:<Menu/>}</button><div><strong>Branded Flooring & Interiors Ltd</strong><span>{admin?'Admin portal':'Fitter portal'}</span></div>{admin&&<button className="button small secondary assistant-launch" onClick={()=>setAssistantOpen(true)}>Ask AI</button>}</header>
       <div className="content">
-        {admin&&['jobs','overview','completed'].includes(page)&&<nav className="section-switcher" aria-label="Job views">{([['jobs','Active jobs'],['overview','Job overview'],['completed','Completed']] as [Page,string][]).map(([key,label])=><button key={key} aria-current={page===key?'page':undefined} className={page===key?'button':'button secondary'} onClick={()=>nav(key)}>{label}</button>)}</nav>}
-        {admin&&['integrations','payments'].includes(page)&&<nav className="section-switcher" aria-label="Money views"><button className={page==='integrations'?'button':'button secondary'} onClick={()=>nav('integrations')}>Invoices & Xero</button><button className={page==='payments'?'button':'button secondary'} onClick={()=>nav('payments')}>Fitter payments</button></nav>}
+        {admin&&['jobs','overview','completed','materials','diary'].includes(page)&&<nav className="section-switcher" aria-label="Job views">{([['jobs','Active jobs'],['overview','Job overview'],['completed','Completed'],['materials','Materials'],['diary','Fitter diary']] as [Page,string][]).map(([key,label])=><button key={key} aria-current={page===key?'page':undefined} className={page===key?'button':'button secondary'} onClick={()=>nav(key)}>{label}</button>)}</nav>}
+        {admin&&['integrations','payments','vat'].includes(page)&&<nav className="section-switcher" aria-label="Money views"><button className={page==='integrations'?'button':'button secondary'} onClick={()=>nav('integrations')}>Invoices & Xero</button><button className={page==='payments'?'button':'button secondary'} onClick={()=>nav('payments')}>Fitter payments</button><button className={page==='vat'?'button':'button secondary'} onClick={()=>nav('vat')}>VAT returns</button></nav>}
         {page==='business'&&admin&&<><div className="page-title"><div><h1>Business</h1><p>Your people, sites and company tools.</p></div></div><div className="business-grid">{([{page:'sites',title:'Sites & plots',description:`${sites.length} sites · developers, addresses and plot records`,icon:<Building2/>},{page:'fitters',title:'Fitters',description:`${profiles.filter(p=>p.role==='fitter'&&p.active).length} active fitters · team and account details`,icon:<Users/>},{page:'completed',title:'Completed work',description:`${completed.length} archived jobs · retain photos and signatures`,icon:<CheckCircle2/>},{page:'integrations',title:'Connections & reports',description:'Xero connection, invoice reconciliation and AI reports',icon:<CreditCard/>}] as const).map(item=><button className="panel business-tile" key={item.page} onClick={()=>nav(item.page)}>{item.icon}<strong>{item.title}</strong><span>{item.description}</span><span aria-hidden="true">Open →</span></button>)}</div></>}
+        {page==='vat'&&admin&&<VatPage/>}
+        {page==='materials'&&admin&&<MaterialsPage jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
+        {page==='diary'&&admin&&<FitterDiary jobs={jobs} profiles={profiles} openJob={openJob} onRefresh={async()=>refresh()}/>}
         {page==='quotes'&&admin&&<QuotesPage jobs={jobs} openJob={openJob} onNew={()=>nav('jobs')}/>}
 
         {loadError&&<div className="error" role="alert">{loadError}</div>}
         {admin&&<AutoXeroSync userId={profile.id} onRefresh={async()=>refresh()}/>}
-        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob} onOverview={()=>nav('overview')} onNewJob={()=>nav('jobs')}/></>}
+        {page==='dashboard'&&<>{admin&&<VatDashboard onOpen={()=>nav('vat')}/>}<Dashboard jobs={jobs} admin={admin} openJob={openJob} onOverview={()=>nav('overview')} onNewJob={()=>nav('jobs')}/></>}
         {page==='overview'&&admin&&<Overview openInvoice={j=>{setReturnPage('overview');setSelected(j);setTab('invoice');setPage('job')}} invoices={invoices} invoiceError={invoiceError} jobs={jobs} openJob={openJob} openPhotos={j=>{setReturnPage('overview');setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}
         {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()} onAi={()=>setAiOpen(true)}/>}
 {page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
@@ -211,13 +218,13 @@ const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);s
         {page==='integrations'&&admin&&<IntegrationsPage invoices={invoices} setInvoices={setInvoices} jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
         {assistantOpen&&admin&&<OfficeAssistant jobs={jobs} openJob={openJob} onClose={()=>setAssistantOpen(false)} onCreate={()=>{setAssistantOpen(false);setAiOpen(true)}}/>}
         {aiOpen&&admin&&<AiJobModal sites={sites} profiles={profiles} onClose={()=>setAiOpen(false)} onCreated={async()=>refresh()}/>}
-        {page==='job'&&selected&&<JobPage backLabel={returnPage==='overview'?'Job Overview':returnPage==='dashboard'?(admin?'Home':'My Jobs'):returnPage==='quotes'?'Quotes':returnPage==='business'?'Business':returnPage==='integrations'?'Money':returnPage==='payments'?'Payments':returnPage==='completed'?'Completed':'Jobs'} job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
+        {page==='job'&&selected&&<JobPage backLabel={returnPage==='diary'?'Fitter diary':returnPage==='materials'?'Materials':returnPage==='overview'?'Job Overview':returnPage==='dashboard'?(admin?'Home':'My Jobs'):returnPage==='quotes'?'Quotes':returnPage==='business'?'Business':returnPage==='integrations'?'Money':returnPage==='payments'?'Payments':returnPage==='completed'?'Completed':'Jobs'} job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
           onBack={()=>nav(returnPage)} onRefresh={async()=>{await refresh(); const {data}=await supabase!.rpc('bf_read_jobs',{p_job:selected.id}); if(data?.[0])setSelected(data[0])}}/>}
       </div>
       <nav className="mobile-bottom-nav" aria-label="Quick navigation">
         <NavButton icon={<CalendarDays/>} label={admin?'Today':'My jobs'} active={page==='dashboard'} onClick={()=>nav('dashboard')}/>
-        <NavButton icon={<ClipboardCheck/>} label="Jobs" active={['jobs','overview','completed','job'].includes(page)} onClick={()=>nav('jobs')}/>
-        {admin&&<><NavButton icon={<FileText/>} label="Quotes" active={page==='quotes'} onClick={()=>nav('quotes')}/><NavButton icon={<Wallet/>} label="Money" active={['integrations','payments'].includes(page)} onClick={()=>nav('integrations')}/><NavButton icon={<BriefcaseBusiness/>} label="Business" active={['business','sites','fitters'].includes(page)} onClick={()=>nav('business')}/></>}
+        <NavButton icon={<ClipboardCheck/>} label="Jobs" active={['jobs','overview','completed','job','materials','diary'].includes(page)} onClick={()=>nav('jobs')}/>
+        {admin&&<><NavButton icon={<FileText/>} label="Quotes" active={page==='quotes'} onClick={()=>nav('quotes')}/><NavButton icon={<Wallet/>} label="Money" active={['integrations','payments','vat'].includes(page)} onClick={()=>nav('integrations')}/><NavButton icon={<BriefcaseBusiness/>} label="Business" active={['business','sites','fitters'].includes(page)} onClick={()=>nav('business')}/></>}
       </nav>
     </main>
   </div>
@@ -277,9 +284,9 @@ function Dashboard({jobs,admin,openJob,onOverview,onNewJob}:{jobs:Job[],admin:bo
 
 function FitterDashboard({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
   const activeJobs=jobs.filter(j=>!j.archived)
-  const today=new Date().toISOString().slice(0,10)
-  const todayJobs=activeJobs.filter(j=>j.install_date===today)
-  const upcoming=activeJobs.filter(j=>!j.install_date || j.install_date>=today)
+  const today=ukToday()
+  const todayJobs=activeJobs.filter(j=>j.install_date&&j.install_date<=today&&(j.install_end_date||j.install_date)>=today)
+  const upcoming=activeJobs.filter(j=>!j.install_date || (j.install_end_date||j.install_date)>=today)
   const installComplete=activeJobs.filter(j=>j.status==='Install Complete').length
   const focus=todayJobs.length?todayJobs:upcoming.slice(0,8)
   return <>
@@ -291,7 +298,7 @@ function FitterDashboard({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
 
 function FitterJobCard({job,openJob}:{job:Job,openJob:(j:Job)=>void}){
   const maps=()=>job.address&&window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.address)}`,'_blank')
-  return <section className="panel fitter-job-card"><div className="fitter-card-top"><div><span className="eyebrow">{niceDate(job.install_date)} • {job.flooring_type}</span><h2>{job.site_name||job.customer}{job.plot?` — Plot ${job.plot}`:''}</h2><p><strong>{jobNumber(job)}</strong>{job.po_number?` • PO ${job.po_number}`:''}</p></div><Status value={job.status}/></div>
+  return <section className="panel fitter-job-card"><div className="fitter-card-top"><div><span className="eyebrow">{niceDate(job.install_date)}{job.install_end_date?' – '+niceDate(job.install_end_date):''} • {job.flooring_type}</span><h2>{job.site_name||job.customer}{job.plot?` — Plot ${job.plot}`:''}</h2><p><strong>{jobNumber(job)}</strong>{job.po_number?` • PO ${job.po_number}`:''}</p></div><Status value={job.status}/></div>
     {job.address&&<div className="fitter-address"><MapPin size={18}/><span>{job.address}</span></div>}
     {job.instructions&&<div className="fitter-instruction"><strong>Instructions</strong><p>{job.instructions}</p></div>}
     <div className="fitter-card-actions">{job.address&&<button className="button secondary" onClick={maps}><MapPin size={17}/>Directions</button>}<button className="button fitter-open" onClick={()=>openJob(job)}>Open job →</button></div></section>
@@ -496,7 +503,7 @@ function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,
  const [fittingCost,setFittingCost]=useState('')
  useEffect(()=>{supabase!.from('job_assignments').select('job_id,fitter_id,fitting_cost,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))},[job.id])
  const save=async()=>{
-   const payload=admin?{job_number:form.job_number,customer:form.customer,site_id:form.site_id||null,plot:form.plot,po_number:form.po_number,flooring_type:form.flooring_type,status:form.status,install_date:form.install_date,address:form.address,access_notes:form.access_notes,instructions:form.instructions,product_spec:form.product_spec,quantity:form.quantity,quantity_unit:form.quantity_unit}:{access_notes:form.access_notes,instructions:form.instructions}
+   const payload=admin?{job_number:form.job_number,customer:form.customer,site_id:form.site_id||null,plot:form.plot,po_number:form.po_number,flooring_type:form.flooring_type,status:form.status,install_date:form.install_date||null,install_end_date:form.install_end_date||null,address:form.address,access_notes:form.access_notes,instructions:form.instructions,product_spec:form.product_spec,quantity:form.quantity,quantity_unit:form.quantity_unit}:{access_notes:form.access_notes,instructions:form.instructions}
    const {error}=await supabase!.from('jobs').update(payload).eq('id',job.id)
    if(error){alert(error.message);return}await onRefresh()
  }
@@ -563,6 +570,7 @@ const unassign=async(fitterId:string)=>{
 )}
 
     <label>Install date<input disabled={!admin} type="date" value={form.install_date||''} onChange={e=>setForm({...form,install_date:e.target.value})}/></label>
+    <label>Final installation day<input disabled={!admin} type="date" min={form.install_date||undefined} value={form.install_end_date||''} onChange={e=>setForm({...form,install_end_date:e.target.value||null})}/></label>
     <label>Customer<input disabled={!admin} value={form.customer} onChange={e=>setForm({...form,customer:e.target.value})}/></label>
     <label>Site<select disabled={!admin} value={form.site_id||''} onChange={e=>setForm({...form,site_id:e.target.value})}><option value="">Private / no site</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
     <label>Plot<input disabled={!admin} value={form.plot||''} onChange={e=>setForm({...form,plot:e.target.value})}/></label>

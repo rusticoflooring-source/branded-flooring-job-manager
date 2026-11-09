@@ -1,0 +1,2 @@
+import {supabase} from './supabase'
+export async function loadRecords<T>(table:string,order:string,select='*'):Promise<T[]>{const rows:T[]=[];for(let offset=0;offset<20000;offset+=1000){const {data,error}=await supabase!.from(table).select(select).order(order).range(offset,offset+999);if(error)throw error;rows.push(...data as unknown as T[]);if(data.length<1000)return rows}throw new Error('Too many records to display. Please narrow the records in your accounts.')}

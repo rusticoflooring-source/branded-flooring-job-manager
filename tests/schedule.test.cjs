@@ -48,3 +48,5 @@ test('year and leap-year boundaries', () => {
 test('empty result stays empty rather than showing unrelated jobs', () => {
   assert.equal(getSevenDaySchedule([job('later','2027-01-01')],new Date(2026,9,30)).jobs.length,0);
 });
+
+test('ongoing multi-day installations remain in the seven-day schedule until their final day',()=>{const result=getSevenDaySchedule([{...job('ongoing','2026-10-28'),install_end_date:'2026-10-31'},{...job('finished','2026-10-27'),install_end_date:'2026-10-29'}],new Date(2026,9,30,12));assert.deepEqual(ids(result),['ongoing'])});
