@@ -1,5 +1,5 @@
 import type { Job } from '../types'
-type Invoice={job_id:string;invoice_id?:string|null;invoice_number?:string|null;invoice_status?:string;amount_due?:number;total?:number}
+type Invoice={job_id:string;invoice_id?:string|null;invoice_number?:string|null;invoice_status?:string;amount_due?:number|null;total?:number|null}
 export function getAccountsWork(jobs:Job[],invoices:Invoice[],tracking:{job_id:string;install_complete:boolean}[]){
  const installed=new Set(tracking.filter(t=>t.install_complete).map(t=>t.job_id))
  const links=new Map(invoices.map(i=>[i.job_id,i]))

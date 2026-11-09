@@ -13,6 +13,7 @@ import JobSheet from './components/JobSheet'
 import QuoteModal from './components/QuoteModal'
 import Overview from './components/Overview'
 import AutoXeroSync from './components/AutoXeroSync'
+import { invoiceColumns, type InvoiceSnapshot } from './lib/invoiceStatus'
 import { fitterSafeText, fitterText } from './lib/fitterPrivacy'
 import { jobNumber } from './lib/jobNumber'
 import { getSevenDaySchedule } from './lib/schedule'
@@ -95,6 +96,8 @@ export default function App(){
   const [aiOpen,setAiOpen]=useState(false)
   const [tab,setTab]=useState<Tab>('details')
   const [jobs,setJobs]=useState<Job[]>([])
+  const [invoices,setInvoices]=useState<InvoiceSnapshot[]>([])
+  const [invoiceError,setInvoiceError]=useState('')
   const [sites,setSites]=useState<Site[]>([])
   const [profiles,setProfiles]=useState<Profile[]>([])
   const [selected,setSelected]=useState<Job|null>(null)
@@ -115,7 +118,7 @@ export default function App(){
   },[])
 
   useEffect(()=>{
-    setJobs([]);setSelected(null);setProfile(null);setLoadError('')
+    setJobs([]);setInvoices([]);setInvoiceError('');setSelected(null);setProfile(null);setLoadError('')
     if(!sessionUser)return
     setLoading(true)
     ;(async()=>{
@@ -129,14 +132,16 @@ export default function App(){
 
   async function refresh(role=profile?.role){
     if(!supabase)return
-    const [j,s,p]=await Promise.all([
+    const [j,s,p,i]=await Promise.all([
       supabase.rpc('bf_read_jobs'),
       supabase.from('sites').select('*').order('name'),
-      role==='admin'?supabase.from('profiles').select('*').order('full_name'):Promise.resolve({data:[],error:null} as any)
+      role==='admin'?supabase.from('profiles').select('*').order('full_name'):Promise.resolve({data:[],error:null} as any),
+      role==='admin'?supabase.from('bf_xero_invoices').select(invoiceColumns):Promise.resolve({data:[],error:null} as any)
     ])
     if(j.error)setLoadError('Could not load jobs. Please refresh or check that the database update has been applied.');else {setLoadError('');setJobs((j.data||[]).map((x:any)=>{const record={...x,site_name:x.site_name||''};if(role!=='admin'){for(const key of ['contract_value','extras_value','invoiced_value','paid_value','fitter_payment_due'])delete record[key];for(const key of Object.keys(record))if(typeof record[key]==='string')record[key]=fitterText(record[key])}return record}))}
     if(!s.error)setSites(s.data||[])
     if(!p.error)setProfiles(p.data||[])
+    if(i.error)setInvoiceError('Invoice status could not refresh. Last shown values may be out of date.');else{setInvoices(i.data||[]);setInvoiceError('')}
   }
 
   useEffect(()=>{
@@ -187,13 +192,13 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
       <div className="content">
         {loadError&&<div className="error" role="alert">{loadError}</div>}
         {admin&&<AutoXeroSync userId={profile.id} onRefresh={async()=>refresh()}/>}
-        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob}/>{admin&&<Overview jobs={jobs} openJob={openJob} openPhotos={j=>{setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}</>}
+        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob}/>{admin&&<Overview invoices={invoices} invoiceError={invoiceError} jobs={jobs} openJob={openJob} openPhotos={j=>{setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}</>}
         {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()} onAi={()=>setAiOpen(true)}/>}
 {page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
         {page==='sites'&&admin&&<SitesPage sites={sites} jobs={jobs} onRefresh={async()=>refresh()}/>}
         {page==='fitters'&&admin&&<FittersPage profiles={profiles}/>}
         {page==='payments'&&admin&&<PaymentsPage jobs={jobs} openJob={openJob}/>}
-        {page==='integrations'&&admin&&<IntegrationsPage jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
+        {page==='integrations'&&admin&&<IntegrationsPage invoices={invoices} setInvoices={setInvoices} jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
         {aiOpen&&admin&&<AiJobModal sites={sites} profiles={profiles} onClose={()=>setAiOpen(false)} onCreated={async()=>refresh()}/>}
         {page==='job'&&selected&&<JobPage job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
           onBack={()=>nav(selected.archived?'completed':'jobs')} onRefresh={async()=>{await refresh(); const {data}=await supabase!.rpc('bf_read_jobs',{p_job:selected.id}); if(data?.[0])setSelected(data[0])}}/>}
