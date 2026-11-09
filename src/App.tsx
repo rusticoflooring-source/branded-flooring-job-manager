@@ -18,7 +18,7 @@ import { fitterSafeText, fitterText } from './lib/fitterPrivacy'
 import { jobNumber } from './lib/jobNumber'
 import { getSevenDaySchedule } from './lib/schedule'
 
-type Page='dashboard'|'jobs'|'completed'|'sites'|'fitters'|'payments'|'job'|'integrations'
+type Page='overview'|'dashboard'|'jobs'|'completed'|'sites'|'fitters'|'payments'|'job'|'integrations'
 type Tab='details'|'invoice'|'notes'|'photos'|'variations'|'payments'|'checklist'|'signoff'
 
 const checklistSets:Record<string,string[]>={
@@ -102,6 +102,7 @@ export default function App(){
   const [profiles,setProfiles]=useState<Profile[]>([])
   const [selected,setSelected]=useState<Job|null>(null)
   const [search,setSearch]=useState('')
+  const [returnPage,setReturnPage]=useState<Page>('jobs')
   const [mobileNav,setMobileNav]=useState(false)
 
   useEffect(()=>{
@@ -168,14 +169,15 @@ export default function App(){
   const admin=profile.role==='admin'
   const filtered=jobs.filter(j=>!j.archived&&[j.job_number,j.customer,j.site_name,j.plot,j.po_number,j.flooring_type].join(' ').toLowerCase().includes(search.toLowerCase()))
 const completed=jobs.filter(j=>j.archived)
-const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invoice':'details');setPage('job')}
+const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);setTab(j.xero_number_pending&&admin?'invoice':'details');setPage('job')}
   const nav=(p:Page)=>{setPage(p);setMobileNav(false);if(p==='integrations')void refresh().catch(console.error)}
 
   return <div className="shell">
     <aside className={mobileNav?'sidebar open':'sidebar'}>
       <div className="brand company-brand"><img src="/company-logo.png" alt="Branded Flooring & Interiors"/><small>Job Manager</small></div>
       <nav>
-        <NavButton icon={<BriefcaseBusiness/>} label={admin?'Dashboard':'My Jobs'} active={page==='dashboard'} onClick={()=>nav('dashboard')}/>
+        <NavButton icon={<BriefcaseBusiness/>} label={admin?'Home':'My Jobs'} active={page==='dashboard'} onClick={()=>nav('dashboard')}/>
+        {admin&&<NavButton icon={<ClipboardCheck/>} label="Job Overview" active={page==='overview'} onClick={()=>nav('overview')}/>}
         <NavButton icon={<ClipboardCheck/>} label="Jobs" active={page==='jobs'}
  onClick={()=>nav('jobs')}/>
 {admin&&<NavButton icon={<ClipboardCheck/>} label="Completed" active={page==='completed'} onClick={()=>nav('completed')}/>}
@@ -192,7 +194,8 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
       <div className="content">
         {loadError&&<div className="error" role="alert">{loadError}</div>}
         {admin&&<AutoXeroSync userId={profile.id} onRefresh={async()=>refresh()}/>}
-        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob}/>{admin&&<Overview openInvoice={j=>{setSelected(j);setTab('invoice');setPage('job')}} invoices={invoices} invoiceError={invoiceError} jobs={jobs} openJob={openJob} openPhotos={j=>{setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}</>}
+        {page==='dashboard'&&<><Dashboard jobs={jobs} admin={admin} openJob={openJob} onOverview={()=>nav('overview')} onNewJob={()=>nav('jobs')}/></>}
+        {page==='overview'&&admin&&<Overview openInvoice={j=>{setReturnPage('overview');setSelected(j);setTab('invoice');setPage('job')}} invoices={invoices} invoiceError={invoiceError} jobs={jobs} openJob={openJob} openPhotos={j=>{setReturnPage('overview');setSelected(j);setTab('photos');setPage('job')}} onRefresh={async()=>refresh()}/>}
         {page==='jobs'&&<JobsPage jobs={filtered} sites={sites} admin={admin} search={search} setSearch={setSearch} openJob={openJob} onCreated={async()=>refresh()} onAi={()=>setAiOpen(true)}/>}
 {page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
         {page==='sites'&&admin&&<SitesPage sites={sites} jobs={jobs} onRefresh={async()=>refresh()}/>}
@@ -200,8 +203,8 @@ const openJob=(j:Job)=>{setSelected(j);setTab(j.xero_number_pending&&admin?'invo
         {page==='payments'&&admin&&<PaymentsPage jobs={jobs} openJob={openJob}/>}
         {page==='integrations'&&admin&&<IntegrationsPage invoices={invoices} setInvoices={setInvoices} jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
         {aiOpen&&admin&&<AiJobModal sites={sites} profiles={profiles} onClose={()=>setAiOpen(false)} onCreated={async()=>refresh()}/>}
-        {page==='job'&&selected&&<JobPage job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
-          onBack={()=>nav(selected.archived?'completed':'jobs')} onRefresh={async()=>{await refresh(); const {data}=await supabase!.rpc('bf_read_jobs',{p_job:selected.id}); if(data?.[0])setSelected(data[0])}}/>}
+        {page==='job'&&selected&&<JobPage backLabel={returnPage==='overview'?'Job Overview':returnPage==='dashboard'?(admin?'Home':'My Jobs'):returnPage==='integrations'?'Accounts & AI':returnPage==='payments'?'Payments':returnPage==='completed'?'Completed':'Jobs'} job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
+          onBack={()=>nav(returnPage)} onRefresh={async()=>{await refresh(); const {data}=await supabase!.rpc('bf_read_jobs',{p_job:selected.id}); if(data?.[0])setSelected(data[0])}}/>}
       </div>
     </main>
   </div>
@@ -243,7 +246,7 @@ function Login(){
   </form></div>
 }
 
-function Dashboard({jobs,admin,openJob}:{jobs:Job[],admin:boolean,openJob:(j:Job)=>void}){
+function Dashboard({jobs,admin,openJob,onOverview,onNewJob}:{jobs:Job[],admin:boolean,openJob:(j:Job)=>void,onOverview:()=>void,onNewJob:()=>void}){
   if(!admin)return <FitterDashboard jobs={jobs} openJob={openJob}/>
   const activeJobs=jobs.filter(j=>!j.archived)
   const active=activeJobs.length
@@ -252,8 +255,9 @@ function Dashboard({jobs,admin,openJob}:{jobs:Job[],admin:boolean,openJob:(j:Job
   const fitterDue=jobs.filter(j=>j.fitter_payment_status!=='Paid').reduce((a,j)=>a+Number(j.fitter_payment_due||0),0)
   const schedule=getSevenDaySchedule(jobs)
   return <>
-    <div className="page-title"><div><h1>Operations Dashboard</h1><p>Live installation, payment and snag overview.</p></div></div>
+    <div className="page-title"><div><h1>Home</h1><p>Your week, outstanding work and next steps.</p></div><div className="row gap wrap"><button className="button secondary" onClick={onNewJob}>Manage jobs</button><button className="button" onClick={onOverview}>Open job overview</button></div></div>
     <div className="metrics"><Metric label="Active jobs" value={String(active)}/><Metric label="Install complete" value={String(complete)}/><Metric label="Outstanding invoices" value={money(outstanding)}/><Metric label="Fitter payments due" value={money(fitterDue)}/></div>
+    <section className="panel attention-panel"><div className="panel-head"><div><h2>Needs attention</h2><p>Open a job to take the next step. Track materials and POs in Job Overview.</p></div></div><div className="attention-list">{activeJobs.filter(j=>j.status==='Snag'||!j.install_date||j.xero_number_pending).slice(0,6).map(j=><button className="attention-item" key={j.id} onClick={()=>openJob(j)}><span><strong>{jobNumber(j)} · {j.site_name||j.customer}{j.plot?` · Plot ${j.plot}`:''}</strong><small>{j.status==='Snag'?'Snags outstanding':j.xero_number_pending?'Invoice number needs attention':'Installation date needed'}</small></span><span aria-hidden="true">→</span></button>)}{!activeJobs.some(j=>j.status==='Snag'||!j.install_date||j.xero_number_pending)&&<p className="muted">No snag, scheduling or invoice-number actions flagged.</p>}</div></section>
     <section className="panel"><div className="panel-head"><div><h2>Upcoming jobs — next 7 days</h2><p>{niceDate(schedule.startDate)} – {niceDate(schedule.endDate)} · {schedule.jobs.length} scheduled</p></div></div><JobTable jobs={schedule.jobs} openJob={openJob}/></section>
   </>
 }
@@ -422,7 +426,7 @@ function PaymentsPage({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
  <section className="panel"><div className="table-wrap"><table><thead><tr><th>Job</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Outstanding</th><th>Fitters due</th><th></th></tr></thead><tbody>{jobs.map(j=><tr key={j.id}><td>{jobNumber(j)}</td><td>{j.customer}</td><td>{money(j.invoiced_value)}</td><td>{money(j.paid_value)}</td><td>{money(Number(j.invoiced_value)-Number(j.paid_value))}</td><td>{money(j.fitter_payment_due)}</td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}</tbody></table></div></section></>
 }
 
-function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],tab:Tab,setTab:(t:Tab)=>void,onBack:()=>void,onRefresh:()=>Promise<void>}){
+function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh,backLabel}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],tab:Tab,setTab:(t:Tab)=>void,onBack:()=>void,onRefresh:()=>Promise<void>,backLabel:string}){
  const [sheetOpen,setSheetOpen]=useState(false)
  const [quoteOpen,setQuoteOpen]=useState(false)
  const archiveJob=async()=>{
@@ -435,15 +439,15 @@ function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh}:{job:Job
 }
 
 const tabs: {id:Tab,label:string,icon:any}[]=[
-  {id:'details',label:'Details',icon:FileText},{id:'invoice',label:'Xero invoice',icon:CreditCard},{id:'notes',label:'Notes',icon:FileText},{id:'photos',label:'Photos',icon:Camera},
-  {id:'variations',label:'Extras',icon:Plus},{id:'payments',label:'Payments',icon:CreditCard},{id:'checklist',label:'Checklist',icon:ClipboardCheck},{id:'signoff',label:'Sign-off',icon:CheckCircle2}
+  {id:'details',label:'Job details',icon:FileText},{id:'notes',label:'Notes',icon:FileText},{id:'photos',label:'Photos',icon:Camera},
+  {id:'variations',label:'Extras',icon:Plus},{id:'checklist',label:'Checklist',icon:ClipboardCheck},{id:'signoff',label:'Sign-off',icon:CheckCircle2},{id:'invoice',label:'Xero invoice',icon:CreditCard},{id:'payments',label:'Payments',icon:CreditCard}
  ]
  return <>
    {admin&&quoteOpen&&<QuoteModal job={job} onClose={()=>setQuoteOpen(false)}/>}
    <div className="job-head">
   {sheetOpen&&<JobSheet job={job} onClose={()=>setSheetOpen(false)} onQuote={admin?()=>{setSheetOpen(false);setQuoteOpen(true)}:undefined}/>}
   <button className="button secondary print-hide" onClick={()=>setSheetOpen(true)}>Installation job sheet</button>
-  <button className="button secondary" onClick={onBack}>← {admin?'Jobs':'My Jobs'}</button>
+  <button className="button secondary" onClick={onBack}>← {backLabel}</button>
   <div>
     <h1>{jobNumber(job)} <Status value={job.status}/></h1>
     <p>{job.customer}{job.site_name?' • '+job.site_name:''}{job.plot?' • Plot '+job.plot:''}</p>
@@ -454,7 +458,8 @@ const tabs: {id:Tab,label:string,icon:any}[]=[
 </div>
    {admin&&job.xero_number_managed&&['Install Complete','Complete'].includes(job.status)&&<div className="review-notice"><strong>Installation complete — review the existing Xero invoice</strong><p>Check final quantities and variations, then approve and send that same invoice in Xero.</p><button className="button secondary" onClick={()=>setTab('invoice')}>Review linked invoice</button></div>}
    {!admin&&<><section className="panel"><strong>Your fitting wage: {job.fitting_cost==null?'Not set':money(job.fitting_cost)}</strong><p>Payment status: {job.fitter_payment_status}</p></section><FitterJobActions job={job} onRefresh={onRefresh}/></>}
-   <div className="tabs">{tabs.filter(x=>admin||(x.id!=='payments'&&x.id!=='invoice')).map(x=><button key={x.id} className={tab===x.id?'active':''} onClick={()=>setTab(x.id)}><x.icon size={16}/>{x.label}</button>)}</div>
+   <div className="job-summary"><div><span>Installation</span><strong>{niceDate(job.install_date)}</strong></div><div><span>Flooring</span><strong>{job.flooring_type}</strong></div><div><span>Purchase order</span><strong>{job.po_number||'Not recorded'}</strong></div><div><span>Location</span><strong>{job.address||job.site_name||'Not recorded'}</strong></div></div>
+   <div className="tabs" aria-label="Job sections">{tabs.filter(x=>admin||(x.id!=='payments'&&x.id!=='invoice')).map(x=><button key={x.id} className={tab===x.id?'active':''} onClick={()=>setTab(x.id)}><x.icon size={16}/>{x.label}</button>)}</div>
    {tab==='details'&&<DetailsTab job={job} admin={admin} profiles={profiles} sites={sites} onRefresh={onRefresh}/>}
    {tab==='notes'&&<NotesTab job={job} admin={admin}/>}
    {tab==='photos'&&<PhotosTab job={job} admin={admin}/>}
