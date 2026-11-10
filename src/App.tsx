@@ -442,7 +442,7 @@ function FittersPage({profiles}:{profiles:Profile[]}){
 function PaymentsPage({jobs,profiles,openJob}:{jobs:Job[],profiles:Profile[],openJob:(j:Job)=>void}){
  const invoiced=jobs.reduce((a,j)=>a+Number(j.invoiced_value||0),0),paid=jobs.reduce((a,j)=>a+Number(j.paid_value||0),0)
  const due=jobs.filter(j=>j.fitter_payment_status!=='Paid').reduce((a,j)=>a+Number(j.fitter_payment_due||0),0)
- return <><div className="page-title"><div><h1>Payments</h1><p>Customer receipts and fitter labour due by job.</p></div></div><FitterPayments jobs={jobs} profiles={profiles}/>
+ return <><div className="page-title"><div><h1>Fitter payments</h1><p>Who needs paying, how much and when. Open each job from the payment schedule.</p></div></div><FitterPayments jobs={jobs} profiles={profiles} openJob={openJob}/>
  <div className="metrics"><Metric label="Customer invoiced" value={money(invoiced)}/><Metric label="Customer received" value={money(paid)}/><Metric label="Customer outstanding" value={money(invoiced-paid)}/><Metric label="Legacy fitter due (manual)" value={money(due)}/></div>
  <section className="panel"><div className="table-wrap"><table><thead><tr><th>Job</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Outstanding</th><th>Legacy fitter due</th><th></th></tr></thead><tbody>{jobs.map(j=><tr key={j.id}><td>{jobNumber(j)}</td><td>{j.customer}</td><td>{money(j.invoiced_value)}</td><td>{money(j.paid_value)}</td><td>{money(Number(j.invoiced_value)-Number(j.paid_value))}</td><td>{money(j.fitter_payment_due)}</td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}</tbody></table></div></section></>
 }
