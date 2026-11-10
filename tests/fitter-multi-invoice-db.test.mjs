@@ -1,0 +1,36 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {PGlite} from '@electric-sql/pglite';
+const admin='00000000-0000-0000-0000-000000000001',fitter='00000000-0000-0000-0000-000000000002',job='00000000-0000-0000-0000-000000000003',other='00000000-0000-0000-0000-000000000004';
+test('one 500 invoice allocates 250 to each job, approves atomically and pays each job only once',async()=>{const db=new PGlite();try{
+await db.exec(`create role anon;create role authenticated;create schema auth;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create table profiles(id uuid primary key,role text,active boolean);insert into profiles values('${admin}','admin',true),('${fitter}','fitter',true),('${other}','fitter',true);create function is_admin() returns boolean language sql stable security definer set search_path=public as $$select exists(select 1 from profiles where id=auth.uid() and role='admin' and active)$$;create table jobs(id uuid primary key);insert into jobs values('${job}');create table job_assignments(job_id uuid references jobs(id),fitter_id uuid references profiles(id),fitting_cost numeric(12,2) check(fitting_cost>=0),primary key(job_id,fitter_id));create table variations(id uuid primary key,job_id uuid references jobs(id),status text,description text,amount numeric);grant select,insert,update on job_assignments,variations to authenticated;grant select on profiles to authenticated;grant usage on schema auth to authenticated;
+create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert on storage.objects to authenticated;create function storage.foldername(text) returns text[] language sql immutable as $$ select string_to_array($1,'/') $$;`);
+for(const file of ['011_fitter_payment_ledger.sql','20261110202503_linked_fitter_costs_and_extras.sql','20261110204504_fitter_cost_approval_queue.sql','20261110204702_fitter_invoice_receipt_and_approval.sql','20261110205605_multi_job_fitter_invoices.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8'));
+const j2='00000000-0000-0000-0000-000000000005',j3='00000000-0000-0000-0000-000000000006';
+await db.exec(`insert into jobs values('${j2}'),('${j3}');set role authenticated;select set_config('request.jwt.claim.sub','${admin}',false);insert into job_assignments values('${job}','${fitter}',250),('${j2}','${fitter}',250),('${j3}','${other}',250);`);
+const approve=jobId=>db.query('select bf_approve_assigned_fitter_cost($1,$2,250,250)',[jobId,fitter]);
+await approve(job);
+const lines=[{job_id:job,amount:250},{job_id:j2,amount:250}];
+const submit=async({allocations=lines,total=500,number='B500',id=crypto.randomUUID()}={})=>{const path=allocations[0].job_id+'/'+fitter+'/'+id;await db.query("insert into storage.objects(bucket_id,name) values('fitter-invoices',$1)",[path]);await db.query('select bf_submit_fitter_invoice_jobs($1,$2,$3,$4,$5,$6,$7)',[id,fitter,number,total,path,'Bradley.pdf',JSON.stringify(allocations)]);return id};
+const review=(id,yes=true)=>db.query('select bf_review_fitter_invoice($1,$2,$3)',[id,yes,'Checked job numbers']);
+await db.exec(`select set_config('request.jwt.claim.sub','${fitter}',false)`);
+await assert.rejects(submit({total:499}),/add up/);await assert.rejects(submit({allocations:[lines[0],lines[0]]}),/only appear once/);await assert.rejects(submit({allocations:[lines[0],{job_id:j3,amount:250}]}),/assigned to this fitter/);
+const invoice=await submit();assert.equal((await db.query('select * from bf_fitter_invoices')).rows.length,1);assert.equal((await db.query('select * from bf_fitter_invoice_jobs')).rows.length,2);
+await assert.rejects(review(invoice),/Administrators only/);
+await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);assert.equal((await db.query('select * from bf_fitter_invoice_jobs')).rows.length,0);
+await db.exec(`select set_config('request.jwt.claim.sub','${admin}',false)`);
+await assert.rejects(review(invoice),/awaits approval/);assert.equal((await db.query('select status from bf_fitter_invoices')).rows[0].status,'Received');
+await approve(j2);await review(invoice);await review(invoice);
+assert.equal((await db.query('select review_history from bf_fitter_invoices')).rows[0].review_history.length,1);
+const pay=(jobId,amount,reference,id=crypto.randomUUID())=>db.query("select bf_record_fitter_entry($1,$2,$3,'Payment',$4,current_date,$5)",[id,jobId,fitter,amount,reference]);
+// One bank transfer is recorded atomically and allocated across both jobs.
+const paymentId=crypto.randomUUID();const payInvoice=(expected=500)=>db.query('select bf_pay_fitter_invoice($1,$2,$3,current_date,$4)',[paymentId,invoice,expected,'B500 bank transfer']);
+await assert.rejects(payInvoice(499),/unpaid amount has changed/);assert.equal((await db.query("select * from bf_fitter_entries where kind='Payment'")).rows.length,0);
+await payInvoice();await payInvoice();
+assert.equal((await db.query('select * from bf_fitter_invoice_payments')).rows.length,1);
+await assert.rejects(db.query('select bf_pay_fitter_invoice($1,$2,500,current_date,$3)',[crypto.randomUUID(),invoice,'Already paid']),/already settled/);
+assert.equal(Number((await db.query("select sum(amount) paid from bf_fitter_entries where kind='Payment'")).rows[0].paid),500);
+assert.equal((await db.query("select count(*)::int n from bf_fitter_entries where kind='Payment'")).rows[0].n,2);
+await assert.rejects(pay(job,1,'duplicate'),/exceeds/);await assert.rejects(pay(j2,1,'duplicate 2'),/exceeds/);
+await db.exec(`select set_config('request.jwt.claim.sub','${fitter}',false)`);await assert.rejects(submit(),/already been uploaded/);
+await db.exec(`select set_config('request.jwt.claim.sub','${admin}',false)`);const second=await submit({number:'B501'});await assert.rejects(review(second),/already approved/);
+await assert.rejects(db.query('update bf_fitter_invoice_jobs set amount=500'),/permission denied/);
+}finally{await db.close()}});

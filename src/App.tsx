@@ -11,6 +11,7 @@ import VatPage, { VatDashboard } from './components/VatPage'
 import MaterialsPage from './components/MaterialsPage'
 import FitterDiary from './components/FitterDiary'
 import FitterPayments from './components/FitterPayments'
+import FitterInvoices from './components/FitterInvoices'
 import FitterExtra from './components/FitterExtra'
 import FitterExtraRequests from './components/FitterExtraRequests'
 import OfficeAssistant from './components/OfficeAssistant'
@@ -221,7 +222,7 @@ const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);s
         {page==='integrations'&&admin&&<IntegrationsPage invoices={invoices} setInvoices={setInvoices} jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
         {assistantOpen&&admin&&<OfficeAssistant jobs={jobs} openJob={openJob} onClose={()=>setAssistantOpen(false)} onCreate={()=>{setAssistantOpen(false);setAiOpen(true)}}/>}
         {aiOpen&&admin&&<AiJobModal sites={sites} profiles={profiles} onClose={()=>setAiOpen(false)} onCreated={async()=>refresh()}/>}
-        {page==='job'&&selected&&<JobPage backLabel={returnPage==='diary'?'Fitter diary':returnPage==='materials'?'Materials':returnPage==='overview'?'Job Overview':returnPage==='dashboard'?(admin?'Home':'My Jobs'):returnPage==='quotes'?'Quotes':returnPage==='business'?'Business':returnPage==='integrations'?'Money':returnPage==='payments'?'Payments':returnPage==='completed'?'Completed':'Jobs'} job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
+        {page==='job'&&selected&&<JobPage allJobs={jobs} backLabel={returnPage==='diary'?'Fitter diary':returnPage==='materials'?'Materials':returnPage==='overview'?'Job Overview':returnPage==='dashboard'?(admin?'Home':'My Jobs'):returnPage==='quotes'?'Quotes':returnPage==='business'?'Business':returnPage==='integrations'?'Money':returnPage==='payments'?'Payments':returnPage==='completed'?'Completed':'Jobs'} job={jobs.find(j=>j.id===selected.id)||selected} admin={admin} profiles={profiles} sites={sites} tab={tab} setTab={setTab}
           onBack={()=>nav(returnPage)} onRefresh={async()=>{await refresh(); const {data}=await supabase!.rpc('bf_read_jobs',{p_job:selected.id}); if(data?.[0])setSelected(data[0])}}/>}
       </div>
       <nav className="mobile-bottom-nav" aria-label="Quick navigation">
@@ -449,7 +450,7 @@ function PaymentsPage({jobs,profiles,openJob}:{jobs:Job[],profiles:Profile[],ope
  <section className="panel"><div className="table-wrap"><table><thead><tr><th>Job</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Outstanding</th><th>Legacy fitter due</th><th></th></tr></thead><tbody>{jobs.map(j=><tr key={j.id}><td>{jobNumber(j)}</td><td>{j.customer}</td><td>{money(j.invoiced_value)}</td><td>{money(j.paid_value)}</td><td>{money(Number(j.invoiced_value)-Number(j.paid_value))}</td><td>{money(j.fitter_payment_due)}</td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}</tbody></table></div></section></>
 }
 
-function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh,backLabel}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],tab:Tab,setTab:(t:Tab)=>void,onBack:()=>void,onRefresh:()=>Promise<void>,backLabel:string}){
+function JobPage({job,allJobs,admin,profiles,sites,tab,setTab,onBack,onRefresh,backLabel}:{job:Job,allJobs:Job[],admin:boolean,profiles:Profile[],sites:Site[],tab:Tab,setTab:(t:Tab)=>void,onBack:()=>void,onRefresh:()=>Promise<void>,backLabel:string}){
  const [sheetOpen,setSheetOpen]=useState(false)
  const [quoteOpen,setQuoteOpen]=useState(false)
  const archiveJob=async()=>{
@@ -480,14 +481,14 @@ const tabs: {id:Tab,label:string,icon:any}[]=[
   {admin&&!job.archived&&<button className="button" onClick={archiveJob}>Move to Completed</button>}
 </div>
    {admin&&job.xero_number_managed&&['Install Complete','Complete'].includes(job.status)&&<div className="review-notice"><strong>Installation complete — review the existing Xero invoice</strong><p>Check final quantities and variations, then approve and send that same invoice in Xero.</p><button className="button secondary" onClick={()=>setTab('invoice')}>Review linked invoice</button></div>}
-   {!admin&&<><section className="panel"><strong>Your fitting wage: {job.fitting_cost==null?'Not set':money(job.fitting_cost)}</strong><p>Payment status: {job.fitter_payment_status}</p></section><FitterJobActions job={job} onRefresh={onRefresh}/></>}
+   {!admin&&<><section className="panel"><strong>Your fitting wage: {job.fitting_cost==null?'Not set':money(job.fitting_cost)}</strong><p>Payment status: {job.fitter_payment_status}</p></section><FitterJobActions job={job} onRefresh={onRefresh}/><FitterInvoices admin={false} jobs={allJobs} jobId={job.id}/></>}
    <div className="job-summary"><div><span>Installation</span><strong>{niceDate(job.install_date)}</strong></div><div><span>Flooring</span><strong>{job.flooring_type}</strong></div><div><span>Purchase order</span><strong>{job.po_number||'Not recorded'}</strong></div><div><span>Location</span><strong>{job.address||job.site_name||'Not recorded'}</strong></div></div>
    <div className="tabs" aria-label="Job sections">{tabs.filter(x=>admin||(x.id!=='payments'&&x.id!=='invoice')).map(x=><button key={x.id} className={tab===x.id?'active':''} onClick={()=>setTab(x.id)}><x.icon size={16}/>{x.label}</button>)}</div>
-   {tab==='details'&&<><DetailsTab job={job} admin={admin} profiles={profiles} sites={sites} onRefresh={onRefresh}/>{admin&&<FitterPayments jobs={[job]} profiles={profiles} jobId={job.id}/>}</>}
+   {tab==='details'&&<><DetailsTab job={job} admin={admin} profiles={profiles} sites={sites} onRefresh={onRefresh}/>{admin&&<FitterPayments jobs={allJobs} profiles={profiles} jobId={job.id}/>}</>}
    {tab==='notes'&&<NotesTab job={job} admin={admin}/>}
    {tab==='photos'&&<PhotosTab job={job} admin={admin}/>}
    {tab==='variations'&&<VariationsTab job={job} admin={admin} onRefresh={onRefresh}/>}
-   {tab==='payments'&&admin&&<><FitterPayments jobs={[job]} profiles={profiles} jobId={job.id}/><JobPayments job={job} onRefresh={onRefresh}/><XeroJobPanel job={job} onRefresh={onRefresh}/></>}
+   {tab==='payments'&&admin&&<><FitterPayments jobs={allJobs} profiles={profiles} jobId={job.id}/><JobPayments job={job} onRefresh={onRefresh}/><XeroJobPanel job={job} onRefresh={onRefresh}/></>}
    {tab==='invoice'&&admin&&<XeroJobPanel job={job} onRefresh={onRefresh}/>} 
    {tab==='checklist'&&<ChecklistTab job={job}/>}
    {tab==='signoff'&&<SignoffTab job={job}/>}
@@ -504,7 +505,7 @@ function DetailsTab({job,admin,profiles,sites,onRefresh}:{job:Job,admin:boolean,
  const [assignments,setAssignments]=useState<Assignment[]>([])
  const [fitter,setFitter]=useState('')
  const [fittingCost,setFittingCost]=useState('')
- useEffect(()=>{supabase!.from('job_assignments').select('job_id,fitter_id,fitting_cost,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))},[job.id])
+ useEffect(()=>{const refresh=()=>{void supabase!.from('job_assignments').select('job_id,fitter_id,fitting_cost,profiles(full_name)').eq('job_id',job.id).then(({data})=>setAssignments((data||[]).map((x:any)=>({...x,fitter_name:x.profiles?.full_name}))))};refresh();window.addEventListener('bf-fitter-payments-changed',refresh);return ()=>window.removeEventListener('bf-fitter-payments-changed',refresh)},[job.id])
  const save=async()=>{
    const payload=admin?{job_number:form.job_number,customer:form.customer,site_id:form.site_id||null,plot:form.plot,po_number:form.po_number,flooring_type:form.flooring_type,status:form.status,install_date:form.install_date||null,install_end_date:form.install_end_date||null,address:form.address,access_notes:form.access_notes,instructions:form.instructions,product_spec:form.product_spec,quantity:form.quantity,quantity_unit:form.quantity_unit}:{access_notes:form.access_notes,instructions:form.instructions}
    const {error}=await supabase!.from('jobs').update(payload).eq('id',job.id)
@@ -517,6 +518,7 @@ const unassign=async(fitterId:string)=>{
     .eq('job_id',job.id)
     .eq('fitter_id',fitterId)
 
+  window.dispatchEvent(new Event('bf-fitter-payments-changed'));
   const {data}=await supabase!
     .from('job_assignments')
     .select('job_id,fitter_id,fitting_cost,profiles(full_name)')
@@ -587,7 +589,7 @@ const unassign=async(fitterId:string)=>{
     <label className="span2">Installation instructions<textarea value={form.instructions||''} onChange={e=>setForm({...form,instructions:e.target.value})}/></label>
    </div>
    <div className="row gap wrap"><button className="button" onClick={save}>Save changes</button>{admin&&<button className="button secondary danger-outline" onClick={deleteJob}>Delete job</button>}</div>
-   {admin&&<div className="subsection"><h3>Assigned fitters</h3><p>Saving an agreed fitting cost also updates this fitter’s payment balance below. Approved fitter extras are added separately.</p><div className="chips">{assignments.map(a=><span className="chip" key={a.fitter_id}>{a.fitter_name||a.fitter_id} · {a.fitting_cost==null?'Cost not set':money(a.fitting_cost)}<button type="button" onClick={()=>unassign(a.fitter_id)} style={{marginLeft:'10px',padding:'4px 10px',border:'1px solid #dc2626',borderRadius:'6px',background:'#dc2626',color:'white',cursor:'pointer',fontWeight:700}}>Remove</button></span>)}</div><div className="row gap"><select value={fitter} onChange={e=>setFitter(e.target.value)}><option value="">Choose fitter…</option>{profiles.filter(p=>p.role==='fitter'&&p.active).map(p=><option value={p.id} key={p.id}>{p.full_name}</option>)}</select><input type="number" aria-label="Fitting cost for selected fitter" placeholder="Fitting cost (£)" min="0" step="0.01" value={fittingCost} onChange={e=>setFittingCost(e.target.value)}/><button className="button secondary" onClick={assign}>Assign / update cost</button></div></div>}
+   {admin&&<div className="subsection"><h3>Assigned fitters</h3><p>Saving a fitting cost sends it to Fitter payments below for review. Approve or vary the amount there before payment. Approved fitter extras are added separately.</p><div className="chips">{assignments.map(a=><span className="chip" key={a.fitter_id}>{a.fitter_name||a.fitter_id} · {a.fitting_cost==null?'Cost not set':money(a.fitting_cost)}<button type="button" onClick={()=>unassign(a.fitter_id)} style={{marginLeft:'10px',padding:'4px 10px',border:'1px solid #dc2626',borderRadius:'6px',background:'#dc2626',color:'white',cursor:'pointer',fontWeight:700}}>Remove</button></span>)}</div><div className="row gap wrap fitter-assignment"><select value={fitter} onChange={e=>setFitter(e.target.value)}><option value="">Choose fitter…</option>{profiles.filter(p=>p.role==='fitter'&&p.active).map(p=><option value={p.id} key={p.id}>{p.full_name}</option>)}</select><input type="number" aria-label="Fitting cost for selected fitter" placeholder="Fitting cost (£)" min="0" step="0.01" value={fittingCost} onChange={e=>setFittingCost(e.target.value)}/><button className="button secondary" onClick={assign}>Assign / update cost</button></div></div>}
  </section>
 }
 
