@@ -10,6 +10,7 @@ import { ukToday } from './lib/operations'
 import VatPage, { VatDashboard } from './components/VatPage'
 import MaterialsPage from './components/MaterialsPage'
 import FitterDiary from './components/FitterDiary'
+import FitterPayments from './components/FitterPayments'
 import OfficeAssistant from './components/OfficeAssistant'
 import AiJobModal from './components/AiJobModal'
 import IntegrationsPage from './components/IntegrationsPage'
@@ -214,7 +215,7 @@ const openJob=(j:Job)=>{setReturnPage(page==='job'?'jobs':page);setSelected(j);s
 {page==='completed'&&admin&&<CompletedJobsPage jobs={completed} sites={sites} search={search} setSearch={setSearch} openJob={openJob}/>}
         {page==='sites'&&admin&&<SitesPage sites={sites} jobs={jobs} onRefresh={async()=>refresh()}/>}
         {page==='fitters'&&admin&&<FittersPage profiles={profiles}/>}
-        {page==='payments'&&admin&&<PaymentsPage jobs={jobs} openJob={openJob}/>}
+        {page==='payments'&&admin&&<PaymentsPage jobs={jobs} profiles={profiles} openJob={openJob}/>}
         {page==='integrations'&&admin&&<IntegrationsPage invoices={invoices} setInvoices={setInvoices} jobs={jobs} openJob={openJob} onRefresh={async()=>refresh()}/>}
         {assistantOpen&&admin&&<OfficeAssistant jobs={jobs} openJob={openJob} onClose={()=>setAssistantOpen(false)} onCreate={()=>{setAssistantOpen(false);setAiOpen(true)}}/>}
         {aiOpen&&admin&&<AiJobModal sites={sites} profiles={profiles} onClose={()=>setAiOpen(false)} onCreated={async()=>refresh()}/>}
@@ -276,7 +277,7 @@ function Dashboard({jobs,admin,openJob,onOverview,onNewJob}:{jobs:Job[],admin:bo
   const schedule=getSevenDaySchedule(jobs)
   return <>
     <div className="page-title"><div><h1>Today</h1><p>Your week, outstanding work and next steps.</p></div><div className="row gap wrap"><button className="button secondary" onClick={onNewJob}>Manage jobs</button><button className="button" onClick={onOverview}>Open job overview</button></div></div>
-    <div className="metrics"><Metric label="Active jobs" value={String(active)}/><Metric label="Install complete" value={String(complete)}/><Metric label="Outstanding invoices" value={money(outstanding)}/><Metric label="Fitter payments due" value={money(fitterDue)}/></div>
+    <div className="metrics"><Metric label="Active jobs" value={String(active)}/><Metric label="Install complete" value={String(complete)}/><Metric label="Outstanding invoices" value={money(outstanding)}/><Metric label="Legacy fitter due (manual)" value={money(fitterDue)}/></div>
     <section className="panel attention-panel"><div className="panel-head"><div><h2>Needs attention</h2><p>Open a job to take the next step. Track materials and POs in Job Overview.</p></div></div><div className="attention-list">{activeJobs.filter(j=>j.status==='Snag'||!j.install_date||j.xero_number_pending).slice(0,6).map(j=><button className="attention-item" key={j.id} onClick={()=>openJob(j)}><span><strong>{jobNumber(j)} · {j.site_name||j.customer}{j.plot?` · Plot ${j.plot}`:''}</strong><small>{j.status==='Snag'?'Snags outstanding':j.xero_number_pending?'Invoice number needs attention':'Installation date needed'}</small></span><span aria-hidden="true">→</span></button>)}{!activeJobs.some(j=>j.status==='Snag'||!j.install_date||j.xero_number_pending)&&<p className="muted">No snag, scheduling or invoice-number actions flagged.</p>}</div></section>
     <section className="panel"><div className="panel-head"><div><h2>Upcoming jobs — next 7 days</h2><p>{niceDate(schedule.startDate)} – {niceDate(schedule.endDate)} · {schedule.jobs.length} scheduled</p></div></div><JobTable jobs={schedule.jobs} openJob={openJob}/></section>
   </>
@@ -438,12 +439,12 @@ function FittersPage({profiles}:{profiles:Profile[]}){
  <section className="panel"><div className="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody>{fitters.map(f=><tr key={f.id}><td><strong>{f.full_name}</strong></td><td>Fitter</td><td>{f.active?'Active':'Disabled'}</td></tr>)}{!fitters.length&&<tr><td colSpan={3} className="empty">No fitter accounts yet. Follow DEPLOYMENT.md to create the first one.</td></tr>}</tbody></table></div></section></>
 }
 
-function PaymentsPage({jobs,openJob}:{jobs:Job[],openJob:(j:Job)=>void}){
+function PaymentsPage({jobs,profiles,openJob}:{jobs:Job[],profiles:Profile[],openJob:(j:Job)=>void}){
  const invoiced=jobs.reduce((a,j)=>a+Number(j.invoiced_value||0),0),paid=jobs.reduce((a,j)=>a+Number(j.paid_value||0),0)
  const due=jobs.filter(j=>j.fitter_payment_status!=='Paid').reduce((a,j)=>a+Number(j.fitter_payment_due||0),0)
- return <><div className="page-title"><div><h1>Payments</h1><p>Customer receipts and fitter labour due by job.</p></div></div>
- <div className="metrics"><Metric label="Customer invoiced" value={money(invoiced)}/><Metric label="Customer received" value={money(paid)}/><Metric label="Customer outstanding" value={money(invoiced-paid)}/><Metric label="Fitter payments due" value={money(due)}/></div>
- <section className="panel"><div className="table-wrap"><table><thead><tr><th>Job</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Outstanding</th><th>Fitters due</th><th></th></tr></thead><tbody>{jobs.map(j=><tr key={j.id}><td>{jobNumber(j)}</td><td>{j.customer}</td><td>{money(j.invoiced_value)}</td><td>{money(j.paid_value)}</td><td>{money(Number(j.invoiced_value)-Number(j.paid_value))}</td><td>{money(j.fitter_payment_due)}</td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}</tbody></table></div></section></>
+ return <><div className="page-title"><div><h1>Payments</h1><p>Customer receipts and fitter labour due by job.</p></div></div><FitterPayments jobs={jobs} profiles={profiles}/>
+ <div className="metrics"><Metric label="Customer invoiced" value={money(invoiced)}/><Metric label="Customer received" value={money(paid)}/><Metric label="Customer outstanding" value={money(invoiced-paid)}/><Metric label="Legacy fitter due (manual)" value={money(due)}/></div>
+ <section className="panel"><div className="table-wrap"><table><thead><tr><th>Job</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Outstanding</th><th>Legacy fitter due</th><th></th></tr></thead><tbody>{jobs.map(j=><tr key={j.id}><td>{jobNumber(j)}</td><td>{j.customer}</td><td>{money(j.invoiced_value)}</td><td>{money(j.paid_value)}</td><td>{money(Number(j.invoiced_value)-Number(j.paid_value))}</td><td>{money(j.fitter_payment_due)}</td><td><button className="button small secondary" onClick={()=>openJob(j)}>Open</button></td></tr>)}</tbody></table></div></section></>
 }
 
 function JobPage({job,admin,profiles,sites,tab,setTab,onBack,onRefresh,backLabel}:{job:Job,admin:boolean,profiles:Profile[],sites:Site[],tab:Tab,setTab:(t:Tab)=>void,onBack:()=>void,onRefresh:()=>Promise<void>,backLabel:string}){
@@ -484,7 +485,7 @@ const tabs: {id:Tab,label:string,icon:any}[]=[
    {tab==='notes'&&<NotesTab job={job} admin={admin}/>}
    {tab==='photos'&&<PhotosTab job={job} admin={admin}/>}
    {tab==='variations'&&<VariationsTab job={job} admin={admin} onRefresh={onRefresh}/>}
-   {tab==='payments'&&admin&&<><JobPayments job={job} onRefresh={onRefresh}/><XeroJobPanel job={job} onRefresh={onRefresh}/></>}
+   {tab==='payments'&&admin&&<><FitterPayments jobs={[job]} profiles={profiles} jobId={job.id}/><JobPayments job={job} onRefresh={onRefresh}/><XeroJobPanel job={job} onRefresh={onRefresh}/></>}
    {tab==='invoice'&&admin&&<XeroJobPanel job={job} onRefresh={onRefresh}/>} 
    {tab==='checklist'&&<ChecklistTab job={job}/>}
    {tab==='signoff'&&<SignoffTab job={job}/>}
@@ -691,8 +692,8 @@ function JobPayments({job,onRefresh}:{job:Job,onRefresh:()=>Promise<void>}){
  const [f,setF]=useState(job)
  useEffect(()=>setF(job),[job])
  const save=async()=>{const {site_name,created_at,...rest}=f as any;await supabase!.from('jobs').update({contract_value:rest.contract_value,extras_value:rest.extras_value,invoiced_value:rest.invoiced_value,paid_value:rest.paid_value,fitter_payment_due:rest.fitter_payment_due,fitter_payment_status:rest.fitter_payment_status}).eq('id',job.id);await onRefresh()}
- return <section className="panel"><div className="metrics mini"><Metric label="Job total" value={money(Number(f.contract_value)+Number(f.extras_value))}/><Metric label="Customer outstanding" value={money(Number(f.invoiced_value)-Number(f.paid_value))}/><Metric label="Fitters due" value={money(f.fitter_payment_due)}/></div>
- <div className="form-grid">{[['Contract value','contract_value'],['Extras / variations','extras_value'],['Invoiced','invoiced_value'],['Customer paid','paid_value'],['Fitter payment due','fitter_payment_due']].map(([label,key])=><label key={key}>{label} (£)<input type="number" step="0.01" value={(f as any)[key]} onChange={e=>setF({...f,[key]:Number(e.target.value)})}/></label>)}<label>Fitter payment status<select value={f.fitter_payment_status} onChange={e=>setF({...f,fitter_payment_status:e.target.value as any})}><option>Due</option><option>Approved</option><option>Paid</option></select></label></div><button className="button" onClick={save}>Save payments</button></section>
+ return <section className="panel"><div className="metrics mini"><Metric label="Job total" value={money(Number(f.contract_value)+Number(f.extras_value))}/><Metric label="Customer outstanding" value={money(Number(f.invoiced_value)-Number(f.paid_value))}/><Metric label="Legacy fitter due (manual)" value={money(f.fitter_payment_due)}/></div>
+ <div className="form-grid">{[['Contract value','contract_value'],['Extras / variations','extras_value'],['Invoiced','invoiced_value'],['Customer paid','paid_value'],['Legacy fitter due (manual)','fitter_payment_due']].map(([label,key])=><label key={key}>{label} (£)<input type="number" step="0.01" value={(f as any)[key]} onChange={e=>setF({...f,[key]:Number(e.target.value)})}/></label>)}<label>Fitter payment status<select value={f.fitter_payment_status} onChange={e=>setF({...f,fitter_payment_status:e.target.value as any})}><option>Due</option><option>Approved</option><option>Paid</option></select></label></div><button className="button" onClick={save}>Save payments</button></section>
 }
 
 function ChecklistTab({job}:{job:Job}){
