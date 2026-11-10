@@ -1,0 +1,21 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {PGlite} from '@electric-sql/pglite';
+const admin='00000000-0000-0000-0000-000000000001',fitter='00000000-0000-0000-0000-000000000002',job='00000000-0000-0000-0000-000000000003';
+test('fitter ledger rejects overpayments and duplicates, retains corrections and prevents fitter access',async()=>{const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create schema auth;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create table profiles(id uuid primary key,role text,active boolean);insert into profiles values('${admin}','admin',true),('${fitter}','fitter',true);create function is_admin() returns boolean language sql stable security definer as $$select exists(select 1 from profiles where id=auth.uid() and role='admin' and active)$$;create table jobs(id uuid primary key);insert into jobs values('${job}');`);
+ const migration=await readFile(new URL('../supabase/migrations/011_fitter_payment_ledger.sql',import.meta.url),'utf8');await db.exec(migration);await db.exec(migration);
+ await db.exec(`set role authenticated;select set_config('request.jwt.claim.sub','${admin}',false)`);
+ const call=(kind,amount,reference,id=crypto.randomUUID(),reverses=null)=>db.query(`select bf_record_fitter_entry($1,$2,$3,$4,$5,'2026-01-01',$6,$7)`,[id,job,fitter,kind,amount,reference,reverses]);
+ await assert.rejects(call('Payment',20,'No approval'),/Approve/);
+ await call('Agreed cost',500,'Agreed with fitter');await assert.rejects(call('Agreed cost',500,'Again'),/already recorded/);
+ const id=crypto.randomUUID();await call('Payment',200,'Bank A',id);await call('Payment',200,'Bank A',id);
+ assert.equal((await db.query("select count(*)::int n from bf_fitter_entries where kind='Payment'")).rows[0].n,1);
+ await assert.rejects(call('Payment',200,'Bank A'),/duplicate/);await assert.rejects(call('Payment',301,'Too much'),/exceeds/);
+ await call('Extra',50,'Approved additional work');await call('Deduction',25,'Agreed adjustment');await call('Payment',325,'Bank B');
+ await assert.rejects(call('Deduction',1,'Below paid'),/below payments/);await assert.rejects(call('Payment',0.01,'Overpaid'),/exceeds/);
+ await call('Payment reversal',200,'Correct mistaken record',crypto.randomUUID(),id);await assert.rejects(call('Payment reversal',200,'Twice',crypto.randomUUID(),id),/unique/);
+ await call('Payment',200,'Correct Bank C');await assert.rejects(call('Extra',1.001,'Fractions'),/Check amount/);
+ assert.equal((await db.query('select count(*)::int n from bf_fitter_entries')).rows[0].n,7);
+ await assert.rejects(db.query('delete from bf_fitter_entries'),/permission denied/);await assert.rejects(db.query("update bf_fitter_entries set amount=1"),/permission denied/);
+ await db.exec(`select set_config('request.jwt.claim.sub','${fitter}',false)`);assert.equal((await db.query('select * from bf_fitter_entries')).rows.length,0);assert.equal((await db.query('select * from bf_fitter_accounts')).rows.length,0);await assert.rejects(call('Extra',50,'Hacked'),/Administrators only/);
+ await db.exec('set role anon');await assert.rejects(db.query('select * from bf_fitter_entries'),/permission denied/);await assert.rejects(call('Extra',50,'Anonymous'),/permission denied/);
+ }finally{await db.close()}});
