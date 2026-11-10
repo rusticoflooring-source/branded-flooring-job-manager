@@ -1,4 +1,7 @@
 begin;
+create schema if not exists bf_private;
+revoke all on schema bf_private from public,anon;
+grant usage on schema bf_private to authenticated;
 create table if not exists public.bf_fitter_accounts (
  id uuid primary key default gen_random_uuid(),
  job_id uuid not null references public.jobs(id) on delete restrict,
@@ -16,21 +19,25 @@ create table if not exists public.bf_fitter_entries (
  reverses uuid unique references public.bf_fitter_entries(id),
  created_at timestamptz not null default now()
 );
+create index if not exists bf_fitter_entries_account_idx on public.bf_fitter_entries(account_id);
+create index if not exists bf_fitter_accounts_fitter_idx on public.bf_fitter_accounts(fitter_id);
+create index if not exists bf_fitter_entries_actor_idx on public.bf_fitter_entries(actor);
 alter table public.bf_fitter_accounts enable row level security;
 alter table public.bf_fitter_entries enable row level security;
 revoke all on public.bf_fitter_accounts,public.bf_fitter_entries from public,anon,authenticated;
 grant select on public.bf_fitter_accounts,public.bf_fitter_entries to authenticated;
 drop policy if exists fitter_accounts_admin on public.bf_fitter_accounts;
-create policy fitter_accounts_admin on public.bf_fitter_accounts for select to authenticated using(public.is_admin());
+create policy fitter_accounts_admin on public.bf_fitter_accounts for select to authenticated using((select public.is_admin()));
 drop policy if exists fitter_entries_admin on public.bf_fitter_entries;
-create policy fitter_entries_admin on public.bf_fitter_entries for select to authenticated using(public.is_admin());
-create or replace function public.bf_record_fitter_entry(p_id uuid,p_job uuid,p_fitter uuid,p_kind text,p_amount numeric,p_date date,p_reference text,p_reverses uuid default null)
+create policy fitter_entries_admin on public.bf_fitter_entries for select to authenticated using((select public.is_admin()));
+create or replace function bf_private.record_fitter_entry(p_id uuid,p_job uuid,p_fitter uuid,p_kind text,p_amount numeric,p_date date,p_reference text,p_reverses uuid default null)
 returns uuid language plpgsql security definer set search_path=public as $$
 declare a uuid; approved numeric; paid numeric; original public.bf_fitter_entries; prior public.bf_fitter_entries;
 begin
- if not public.is_admin() then raise exception 'Administrators only';end if;
+ if auth.uid() is null or not public.is_admin() then raise exception 'Administrators only';end if;
  if p_amount is null or p_amount<=0 or p_amount<>round(p_amount,2) or p_amount>9999999999.99 or p_date is null or p_date>current_date or p_reference is null or length(trim(p_reference)) not between 1 and 500 or p_kind is null or p_kind not in ('Agreed cost','Extra','Deduction','Payment','Payment reversal') then raise exception 'Check amount, date and reference';end if;
  if not exists(select 1 from public.profiles where id=p_fitter and role='fitter') then raise exception 'Choose a fitter';end if;
+ perform pg_advisory_xact_lock(hashtextextended('bf_fitter_payments:'||p_fitter::text,0));
  insert into public.bf_fitter_accounts(job_id,fitter_id) values(p_job,p_fitter) on conflict(job_id,fitter_id) do nothing;
  select id into a from public.bf_fitter_accounts where job_id=p_job and fitter_id=p_fitter for update;
  select * into prior from public.bf_fitter_entries where id=p_id;
@@ -53,6 +60,12 @@ begin
  insert into public.bf_fitter_entries(id,account_id,kind,amount,entry_date,reference,actor,reverses) values(p_id,a,p_kind,p_amount,p_date,trim(p_reference),auth.uid(),p_reverses);
  return p_id;
 end;$$;
+revoke all on function bf_private.record_fitter_entry(uuid,uuid,uuid,text,numeric,date,text,uuid) from public,anon;
+grant execute on function bf_private.record_fitter_entry(uuid,uuid,uuid,text,numeric,date,text,uuid) to authenticated;
+create or replace function public.bf_record_fitter_entry(p_id uuid,p_job uuid,p_fitter uuid,p_kind text,p_amount numeric,p_date date,p_reference text,p_reverses uuid default null)
+returns uuid language sql security invoker set search_path='' as $$
+ select bf_private.record_fitter_entry(p_id,p_job,p_fitter,p_kind,p_amount,p_date,p_reference,p_reverses);
+$$;
 revoke all on function public.bf_record_fitter_entry(uuid,uuid,uuid,text,numeric,date,text,uuid) from public,anon;
 grant execute on function public.bf_record_fitter_entry(uuid,uuid,uuid,text,numeric,date,text,uuid) to authenticated;
 commit;
